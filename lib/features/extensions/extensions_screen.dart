@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:koma_source_api/koma_source_api.dart';
 
+import '../../app/theme.dart';
 import '../../core/platform/android_source_client.dart';
 import '../../core/source_providers.dart';
 import '../../shared/widgets/async_view.dart';
+import '../../shared/widgets/pressable.dart';
 
 typedef ExtensionRow = ({ExtensionInfo info, bool imported});
 
@@ -49,23 +53,97 @@ class ExtensionsScreen extends ConsumerWidget {
   }
 
   Future<bool> _confirmTrust(BuildContext context, ExtensionInfo e) async {
-    final ok = await showDialog<bool>(
+    HapticFeedback.mediumImpact();
+    final ok = await showGeneralDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text('¿Confiar en ${e.name}?'),
-        content: Text(
-          'Esta extensión (${e.id}) ejecutará código de terceros dentro de '
-          'Koma con acceso a internet. Confía solo si conoces su origen.',
+      barrierDismissible: true,
+      barrierLabel: 'Cerrar',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 320),
+      transitionBuilder: (_, anim, _, child) => FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(
+          scale: Tween(begin: 0.92, end: 1.0).animate(
+              CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
+          child: child,
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancelar')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Confiar')),
-        ],
       ),
+      pageBuilder: (ctx, _, _) {
+        final c = ctx.koma;
+        final t = Theme.of(ctx).textTheme;
+        return Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              margin: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(26),
+              constraints: const BoxConstraints(maxWidth: 420),
+              decoration: BoxDecoration(
+                color: c.surface,
+                borderRadius: BorderRadius.circular(32),
+                border: Border.all(color: c.line),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                        color: c.accentSoft, shape: BoxShape.circle),
+                    child: Icon(Icons.shield_moon_rounded,
+                        color: c.accent, size: 28),
+                  ),
+                  const SizedBox(height: 18),
+                  Text('¿Confiar en ${e.name}?', style: t.headlineSmall),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Esta extensión (${e.id}) ejecutará código de terceros dentro de '
+                    'Koma con acceso a internet. Confía solo si conoces su origen.',
+                    style: t.bodyMedium?.copyWith(color: c.muted),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Pressable(
+                          onTap: () => Navigator.pop(ctx, false),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: c.surfaceHigh,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text('Cancelar', style: t.labelLarge),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Pressable(
+                          onTap: () => Navigator.pop(ctx, true),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            decoration: BoxDecoration(
+                              color: c.accent,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text('Confiar',
+                                style:
+                                    t.labelLarge?.copyWith(color: Colors.white)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
     return ok ?? false;
   }
@@ -73,42 +151,202 @@ class ExtensionsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rows = ref.watch(extensionRowsProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Extensiones')),
-      body: AsyncView(
-        value: rows,
-        onRetry: () => ref.invalidate(extensionRowsProvider),
-        builder: (list) => list.isEmpty
-            ? const Center(child: Text('No se encontraron extensiones'))
-            : ListView(
-                children: [
-                  for (final r in list)
-                    ListTile(
-                      title: Text(r.info.name),
-                      subtitle: Text(
-                          '${r.info.id}\nv${r.info.version} · ${r.info.language}'),
-                      isThreeLine: true,
-                      trailing: !r.imported
-                          ? FilledButton.tonal(
-                              onPressed: () => _run(context, ref,
-                                  (c) => c.importDeviceExtension(r.info.id)),
-                              child: const Text('Importar'),
+    final t = Theme.of(context).textTheme;
+    final c = context.koma;
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 18, 22, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Extensiones', style: t.displayLarge?.copyWith(fontSize: 38)),
+                const SizedBox(height: 6),
+                Text(
+                  'Cada extensión añade fuentes de lectura. Importa y confía solo en las que conozcas.',
+                  style: t.bodyMedium?.copyWith(color: c.muted),
+                ),
+              ],
+            ).animate().fadeIn(duration: 450.ms).slideY(begin: 0.08),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: AsyncView(
+              value: rows,
+              onRetry: () => ref.invalidate(extensionRowsProvider),
+              builder: (list) => list.isEmpty
+                  ? Center(
+                      child: Text('No se encontraron extensiones',
+                          style: t.bodyMedium?.copyWith(color: c.muted)),
+                    )
+                  : ListView.separated(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(18, 4, 18, 130),
+                      itemCount: list.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 12),
+                      itemBuilder: (context, i) {
+                        final r = list[i];
+                        return _ExtensionCard(
+                          row: r,
+                          onImport: () => _run(context, ref,
+                              (c) => c.importDeviceExtension(r.info.id)),
+                          onTrust: () async {
+                            if (await _confirmTrust(context, r.info) &&
+                                context.mounted) {
+                              await _run(context, ref,
+                                  (c) => c.trustExtension(r.info.id));
+                            }
+                          },
+                        )
+                            .animate()
+                            .fadeIn(
+                              delay: Duration(milliseconds: 60 * i),
+                              duration: 420.ms,
                             )
-                          : r.info.trusted
-                              ? const Icon(Icons.verified, color: Colors.green)
-                              : FilledButton(
-                                  onPressed: () async {
-                                    if (await _confirmTrust(context, r.info) &&
-                                        context.mounted) {
-                                      await _run(context, ref,
-                                          (c) => c.trustExtension(r.info.id));
-                                    }
-                                  },
-                                  child: const Text('Confiar'),
-                                ),
+                            .slideY(begin: 0.12, curve: Curves.easeOutCubic);
+                      },
                     ),
-                ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ExtensionCard extends StatelessWidget {
+  const _ExtensionCard({
+    required this.row,
+    required this.onImport,
+    required this.onTrust,
+  });
+
+  final ExtensionRow row;
+  final VoidCallback onImport;
+  final VoidCallback onTrust;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.koma;
+    final t = Theme.of(context).textTheme;
+    final info = row.info;
+    final grad = KomaColors
+        .coverGradients[info.id.hashCode.abs() % KomaColors.coverGradients.length];
+    final trusted = row.imported && info.trusted;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: trusted ? c.accent.withValues(alpha: 0.5) : c.line),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 54,
+            height: 54,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: grad,
               ),
+            ),
+            child: Text(
+              info.name.isEmpty ? '?' : info.name[0].toUpperCase(),
+              style: t.titleLarge?.copyWith(color: Colors.white),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(info.name,
+                    style: t.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 3),
+                Text('v${info.version} · ${info.language.toUpperCase()}',
+                    style: t.labelMedium),
+                const SizedBox(height: 2),
+                Text(info.id,
+                    style: t.bodySmall?.copyWith(fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            switchInCurve: Curves.easeOutBack,
+            child: !row.imported
+                ? _Action(
+                    key: const ValueKey('import'),
+                    label: 'Importar',
+                    filled: false,
+                    onTap: onImport,
+                  )
+                : trusted
+                    ? Container(
+                        key: const ValueKey('ok'),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                            color: c.accentSoft, shape: BoxShape.circle),
+                        child: Icon(Icons.verified_rounded,
+                            color: c.accent, size: 24),
+                      )
+                    : _Action(
+                        key: const ValueKey('trust'),
+                        label: 'Confiar',
+                        filled: true,
+                        onTap: onTrust,
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Action extends StatelessWidget {
+  const _Action({
+    super.key,
+    required this.label,
+    required this.filled,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool filled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.koma;
+    return Pressable(
+      onTap: onTap,
+      haptic: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        decoration: BoxDecoration(
+          color: filled ? c.accent : c.surfaceHigh,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: Theme.of(context)
+              .textTheme
+              .labelLarge
+              ?.copyWith(color: filled ? Colors.white : c.paper),
+        ),
       ),
     );
   }
