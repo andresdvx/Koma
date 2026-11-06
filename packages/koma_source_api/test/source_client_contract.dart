@@ -45,6 +45,9 @@ void sourceClientContract(
           sourceId: sourceId, chapterId: chapters.first.id);
       expect(pages.map((p) => p.index),
           orderedEquals([for (var i = 0; i < pages.length; i++) i]));
+      final bytes = await client.getPageImage(
+          sourceId: sourceId, chapterId: chapters.first.id, pageIndex: 0);
+      expect(bytes, isNotEmpty);
     });
 
     test('fuente inexistente lanza SourceNotFound', () {

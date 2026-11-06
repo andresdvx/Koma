@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -61,7 +63,11 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
                 child: ListView.builder(
                   scrollCacheExtent: const ScrollCacheExtent.pixels(3000),
                   itemCount: list.length,
-                  itemBuilder: (_, i) => _PageImage(page: list[i]),
+                  itemBuilder: (_, i) => _PageImage(
+                    sourceId: widget.sourceId,
+                    chapterId: widget.chapterId,
+                    page: list[i],
+                  ),
                 ),
               ),
       ),
@@ -69,57 +75,76 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
   }
 }
 
-class _PageImage extends StatefulWidget {
-  const _PageImage({required this.page});
+typedef PageKey = ({String sourceId, String chapterId, int index});
+
+/// Bytes de cada página, descargados por el motor. Se conservan mientras dure la app
+/// para no volver a descargar al hacer scroll (pendiente: limitar memoria).
+final pageImageProvider =
+    FutureProvider.family<Uint8List, PageKey>((ref, k) {
+  return ref.watch(sourceClientProvider).getPageImage(
+        sourceId: k.sourceId,
+        chapterId: k.chapterId,
+        pageIndex: k.index,
+      );
+});
+
+class _PageImage extends ConsumerWidget {
+  const _PageImage({
+    required this.sourceId,
+    required this.chapterId,
+    required this.page,
+  });
+
+  final String sourceId;
+  final String chapterId;
   final ReaderPage page;
 
   @override
-  State<_PageImage> createState() => _PageImageState();
-}
-
-class _PageImageState extends State<_PageImage> {
-  int _attempt = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = widget.page;
-    if (p.imageUrl.isEmpty) return _error('Página ${p.index + 1} sin imagen');
-    return Image.network(
-      p.imageUrl,
-      key: ValueKey('${p.index}-$_attempt'),
-      headers: p.headers,
-      width: double.infinity,
-      fit: BoxFit.fitWidth,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return SizedBox(
-          height: 400,
-          child: Center(
-            child: CircularProgressIndicator(
-              value: progress.expectedTotalBytes == null
-                  ? null
-                  : progress.cumulativeBytesLoaded / progress.expectedTotalBytes!,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final key = (sourceId: sourceId, chapterId: chapterId, index: page.index);
+    return ref.watch(pageImageProvider(key)).when(
+          loading: () => const SizedBox(
+            height: 400,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (e, _) => SizedBox(
+            height: 260,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      'No se pudo cargar la página ${page.index + 1}\n$e',
+                      maxLines: 6,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style:
+                          const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => ref.invalidate(pageImageProvider(key)),
+                    child: const Text('Reintentar'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          data: (bytes) => Image.memory(
+            bytes,
+            width: double.infinity,
+            fit: BoxFit.fitWidth,
+            gaplessPlayback: true,
+            errorBuilder: (_, _, _) => const SizedBox(
+              height: 200,
+              child: Center(
+                child: Text('Imagen no válida',
+                    style: TextStyle(color: Colors.white70)),
+              ),
             ),
           ),
         );
-      },
-      errorBuilder: (_, _, _) => _error('No se pudo cargar la página ${p.index + 1}'),
-    );
   }
-
-  Widget _error(String msg) => SizedBox(
-        height: 200,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(msg, style: const TextStyle(color: Colors.white70)),
-              TextButton(
-                onPressed: () => setState(() => _attempt++),
-                child: const Text('Reintentar'),
-              ),
-            ],
-          ),
-        ),
-      );
 }

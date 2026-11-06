@@ -1,5 +1,6 @@
 package dev.koma.koma.bridge
 
+import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
@@ -10,6 +11,11 @@ import java.util.TimeZone
 
 /** Traduce la API de Source de Mihon a mapas serializables (DTO del contrato de Koma). */
 class SourceAdapter(private val registry: ExtensionRegistry) {
+
+    /** Páginas de los últimos capítulos abiertos: la extensión necesita el mismo objeto Page para descargar. */
+    private val pageCache = object : LinkedHashMap<String, List<Page>>(8, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<Page>>?) = size > 4
+    }
 
     suspend fun search(sourceId: String, query: String, page: Int): Map<String, Any?> {
         val s = registry.source(sourceId)
@@ -63,9 +69,31 @@ class SourceAdapter(private val registry: ExtensionRegistry) {
         val chapter = SChapter.create().apply { url = chapterId; name = chapterId }
         val headers = (s as? HttpSource)?.headers?.toMultimap()
             ?.mapValues { it.value.joinToString(",") } ?: emptyMap()
-        return s.getPageList(chapter).sortedBy { it.index }.map { p ->
-            if (p.imageUrl.isNullOrEmpty() && s is HttpSource) p.imageUrl = s.getImageUrl(p)
+        val list = s.getPageList(chapter).sortedBy { it.index }
+        synchronized(pageCache) { pageCache["$sourceId|$chapterId"] = list }
+        return list.map { p ->
             mapOf("index" to p.index, "imageUrl" to (p.imageUrl ?: ""), "headers" to headers)
+        }
+    }
+
+    /** Descarga la imagen con el cliente y la lógica de la extensión (URL final, cabeceras, cookies). */
+    suspend fun pageImage(sourceId: String, chapterId: String, index: Int): ByteArray {
+        val s = registry.source(sourceId)
+        if (s !is HttpSource) {
+            throw KomaBridgeException("ExtensionIncompatible", "La fuente no es HttpSource")
+        }
+        val key = "$sourceId|$chapterId"
+        var list = synchronized(pageCache) { pageCache[key] }
+        if (list == null) {
+            pages(sourceId, chapterId)
+            list = synchronized(pageCache) { pageCache[key] }
+        }
+        val page = list?.firstOrNull { it.index == index }
+            ?: throw KomaBridgeException("ContentUnavailable", "Página $index no existe")
+        if (page.imageUrl.isNullOrEmpty()) page.imageUrl = s.getImageUrl(page)
+        return s.getImage(page).use { response ->
+            if (!response.isSuccessful) throw eu.kanade.tachiyomi.network.HttpException(response.code)
+            response.body.bytes()
         }
     }
 

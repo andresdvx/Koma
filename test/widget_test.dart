@@ -1,9 +1,10 @@
+import 'package:flutter/material.dart' show Image;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:koma/app/app.dart';
 
 void main() {
-  testWidgets('explorar muestra resultados y abre detalles', (tester) async {
+  testWidgets('explorar → detalles → lector con páginas del motor', (tester) async {
     await tester.pumpWidget(const ProviderScope(child: KomaApp()));
     await tester.pumpAndSettle();
 
@@ -17,9 +18,7 @@ void main() {
     await tester.tap(find.text('Capítulo 1'));
     await tester.pumpAndSettle();
 
-    // Lector abierto con el título del capítulo; las imágenes de red fallan en tests
-    // y deben degradarse a un mensaje con reintento, sin romper la app.
-    expect(find.text('Capítulo 1'), findsOneWidget);
-    expect(find.textContaining('No se pudo cargar la página 1'), findsOneWidget);
+    // Lector abierto: las 5 páginas del capítulo falso se descargan vía el motor.
+    expect(find.byType(Image, skipOffstage: false), findsNWidgets(5));
   });
 }

@@ -97,4 +97,16 @@ class AndroidSourceClient implements SourceClient {
       (await _list('getPages', {'sourceId': sourceId, 'chapterId': chapterId}))
           .map(ReaderPage.fromJson)
           .toList();
+
+  @override
+  Future<Uint8List> getPageImage({
+    required String sourceId,
+    required String chapterId,
+    required int pageIndex,
+  }) =>
+      _call<Uint8List>('getPageImage', {
+        'sourceId': sourceId,
+        'chapterId': chapterId,
+        'pageIndex': pageIndex,
+      });
 }

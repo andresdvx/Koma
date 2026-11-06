@@ -93,6 +93,11 @@ class KomaPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             "getManga" -> adapter.manga(arg("sourceId"), arg("mangaId"))
             "getChapters" -> adapter.chapters(arg("sourceId"), arg("mangaId"))
             "getPages" -> adapter.pages(arg("sourceId"), arg("chapterId"))
+            "getPageImage" -> adapter.pageImage(
+                arg("sourceId"),
+                arg("chapterId"),
+                call.argument<Int>("pageIndex") ?: 0,
+            )
             else -> throw KomaBridgeException("UnknownError", "Método desconocido: ${call.method}")
         }
     }

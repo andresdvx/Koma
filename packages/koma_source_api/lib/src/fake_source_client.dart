@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'errors.dart';
 import 'models.dart';
 import 'source_client.dart';
@@ -98,6 +101,24 @@ class FakeSourceClient implements SourceClient {
           number: i.toDouble(),
         ),
     ];
+  }
+
+  // PNG 1x1 válido, para pruebas sin red.
+  static final _png = base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  );
+
+  @override
+  Future<Uint8List> getPageImage({
+    required String sourceId,
+    required String chapterId,
+    required int pageIndex,
+  }) async {
+    final pages = await getPages(sourceId: sourceId, chapterId: chapterId);
+    if (pageIndex < 0 || pageIndex >= pages.length) {
+      throw const ContentUnavailable('Página no existe');
+    }
+    return _png;
   }
 
   @override
