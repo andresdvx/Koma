@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -77,10 +78,16 @@ class _ReaderScreenState extends ConsumerState<ReaderScreen> {
 
 typedef PageKey = ({String sourceId, String chapterId, int index});
 
-/// Bytes de cada página, descargados por el motor. Se conservan mientras dure la app
-/// para no volver a descargar al hacer scroll (pendiente: limitar memoria).
+/// Bytes de cada página, descargados por el motor.
 final pageImageProvider =
-    FutureProvider.family<Uint8List, PageKey>((ref, k) {
+    FutureProvider.autoDispose.family<Uint8List, PageKey>((ref, k) {
+  // Mantiene la imagen unos segundos tras salir de pantalla (scroll de ida y vuelta)
+  // y luego la libera: la memoria queda acotada a las páginas cercanas.
+  final link = ref.keepAlive();
+  Timer? timer;
+  ref.onCancel(() => timer = Timer(const Duration(seconds: 45), link.close));
+  ref.onResume(() => timer?.cancel());
+  ref.onDispose(() => timer?.cancel());
   return ref.watch(sourceClientProvider).getPageImage(
         sourceId: k.sourceId,
         chapterId: k.chapterId,

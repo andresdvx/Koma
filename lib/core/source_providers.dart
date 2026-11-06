@@ -1,10 +1,12 @@
 import 'dart:io' show Platform;
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:koma_source_api/koma_source_api.dart';
 
 import 'platform/android_source_client.dart';
+import 'source_order.dart';
 
 /// Cliente activo: motor real en Android; cliente falso en el resto
 /// (Windows usará su propio motor en la fase 4).
@@ -16,16 +18,11 @@ final sourceClientProvider = Provider<SourceClient>((ref) {
 final sourcesProvider = FutureProvider<List<MangaSourceInfo>>((ref) async {
   final client = ref.watch(sourceClientProvider);
   await client.getExtensions(); // el motor recarga las extensiones de confianza
-  return client.getSources();
-});
-
-typedef SearchArgs = ({String sourceId, String query});
-
-final searchProvider =
-    FutureProvider.family<MangaPageResult, SearchArgs>((ref, args) {
-  return ref
-      .watch(sourceClientProvider)
-      .searchManga(sourceId: args.sourceId, query: args.query, page: 1);
+  final sources = await client.getSources();
+  return sortSourcesByLanguage(
+    sources,
+    PlatformDispatcher.instance.locale.languageCode,
+  );
 });
 
 typedef MangaKey = ({String sourceId, String mangaId});
