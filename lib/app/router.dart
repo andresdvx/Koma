@@ -2,11 +2,20 @@ import 'package:go_router/go_router.dart';
 
 import '../features/browse/browse_screen.dart';
 import '../features/extensions/extensions_screen.dart';
+import '../features/reader/reader_screen.dart';
 import '../features/manga_details/manga_details_screen.dart';
 
 final router = GoRouter(
   routes: [
     GoRoute(path: '/', builder: (_, _) => const BrowseScreen()),
+    GoRoute(
+      path: '/reader/:sourceId/:chapterId',
+      builder: (_, state) => ReaderScreen(
+        sourceId: state.pathParameters['sourceId']!,
+        chapterId: state.pathParameters['chapterId']!,
+        title: state.uri.queryParameters['title'],
+      ),
+    ),
     GoRoute(path: '/extensions', builder: (_, _) => const ExtensionsScreen()),
     GoRoute(
       path: '/manga/:sourceId/:mangaId',

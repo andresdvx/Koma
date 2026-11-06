@@ -13,5 +13,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Capítulo 1'), findsOneWidget);
+
+    await tester.tap(find.text('Capítulo 1'));
+    await tester.pumpAndSettle();
+
+    // Lector abierto con el título del capítulo; las imágenes de red fallan en tests
+    // y deben degradarse a un mensaje con reintento, sin romper la app.
+    expect(find.text('Capítulo 1'), findsOneWidget);
+    expect(find.textContaining('No se pudo cargar la página 1'), findsOneWidget);
   });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/source_providers.dart';
 import '../../shared/widgets/async_view.dart';
@@ -48,7 +49,10 @@ class MangaDetailsScreen extends ConsumerWidget {
                   for (final c in list)
                     ListTile(
                       title: Text(c.name),
-                      // El lector llega en la fase 3.
+                      onTap: () => context.push(
+                        '/reader/${Uri.encodeComponent(sourceId)}/${Uri.encodeComponent(c.id)}'
+                        '?title=${Uri.encodeQueryComponent(c.name)}',
+                      ),
                     ),
                 ],
               ),
