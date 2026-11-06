@@ -256,13 +256,16 @@ Usar ramas `feature/*` e integrar cambios probados en `develop`. Mantener `main`
 
 ## 8. Criterios de aceptación del primer MVP
 
-- [ ] APK existente reconocido y cargado sin modificarlo.
-- [ ] Se identifica al menos una fuente.
-- [ ] Se consultan mangas reales de una fuente de prueba autorizada.
-- [ ] Se muestran detalles y capítulos.
-- [ ] Se recuperan todas las páginas de un capítulo.
-- [ ] Se renderizan las imágenes en Flutter.
-- [ ] Errores y fallos de red no cierran la aplicación.
+- [x] APK existente reconocido y cargado sin modificarlo.
+- [x] Se identifica al menos una fuente.
+- [x] Se consultan mangas reales de una fuente de prueba autorizada.
+- [x] Se muestran detalles y capítulos.
+- [x] Se recuperan todas las páginas de un capítulo.
+- [x] Se renderizan las imágenes en Flutter.
+- [x] Errores y fallos de red no cierran la aplicación.
+
+> Verificado el 2026-11-06 en un teléfono Android real con la extensión MangaDex (sin modificar). Pendiente: Cloudflare con WebView, límite de memoria del lector y pruebas con más extensiones.
+
 
 **Definición de terminado:** el usuario puede abrir Koma en Android, usar una extensión Mihon/Tachiyomi existente, elegir un manga y leer un capítulo completo.
 

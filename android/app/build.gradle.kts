@@ -2,12 +2,17 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.4.0"
 }
 
 android {
     namespace = "dev.koma.koma"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
+
+    buildFeatures {
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -42,6 +47,22 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    // Dependencias que el host debe aportar a las extensiones Mihon/Tachiyomi.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.9.0")
+    implementation("com.squareup.okhttp3:okhttp:5.3.2")
+    implementation("com.squareup.okhttp3:okhttp-brotli:5.3.2")
+    implementation("com.squareup.okhttp3:okhttp-zstd:5.3.2")
+    implementation("org.jsoup:jsoup:1.21.2")
+    implementation("uy.kohesive.injekt:injekt-core:1.16.1")
+    implementation("io.reactivex:rxjava:1.3.8")
+    implementation("androidx.preference:preference-ktx:1.2.1")
+    implementation("app.cash.quickjs:quickjs-android:0.9.2")
 }
 
 flutter {
