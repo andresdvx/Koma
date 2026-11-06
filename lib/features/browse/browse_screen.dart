@@ -27,7 +27,16 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
   Widget build(BuildContext context) {
     final sources = ref.watch(sourcesProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Explorar')),
+      appBar: AppBar(
+        title: const Text('Explorar'),
+        actions: [
+          IconButton(
+            tooltip: 'Extensiones',
+            icon: const Icon(Icons.extension),
+            onPressed: () => context.push('/extensions'),
+          ),
+        ],
+      ),
       body: AsyncView(
         value: sources,
         onRetry: () => ref.invalidate(sourcesProvider),

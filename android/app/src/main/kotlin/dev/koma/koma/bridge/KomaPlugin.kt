@@ -75,6 +75,11 @@ class KomaPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
                 registry.add(loader.import(File(arg("path"))))
                 registry.extensions()
             }
+            "listDeviceExtensions" -> loader.listDeviceExtensions()
+            "importDeviceExtension" -> {
+                registry.add(loader.importFromDevice(arg("id")))
+                registry.extensions()
+            }
             "trustExtension" -> {
                 registry.trust(arg("id"))
                 registry.extensions()

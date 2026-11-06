@@ -93,6 +93,33 @@ class ExtensionLoader(private val app: Application) {
         return inspect(target)
     }
 
+    /** Extensiones Mihon/Tachiyomi instaladas en el teléfono (aún no importadas en Koma). */
+    fun listDeviceExtensions(): List<Map<String, Any?>> {
+        @Suppress("DEPRECATION")
+        val all = app.packageManager.getInstalledPackages(PackageManager.GET_CONFIGURATIONS)
+        return all.filter { p -> p.reqFeatures.orEmpty().any { it.name == EXTENSION_FEATURE } }
+            .map { p ->
+                mapOf(
+                    "id" to p.packageName,
+                    "name" to (p.applicationInfo?.loadLabel(app.packageManager)?.toString() ?: p.packageName)
+                        .removePrefix("Tachiyomi: "),
+                    "version" to (p.versionName ?: "?"),
+                    "language" to p.packageName.substringAfter("eu.kanade.tachiyomi.extension.").substringBefore('.'),
+                    "trusted" to false,
+                )
+            }
+    }
+
+    /** Importa (copia sin modificar) el APK de una extensión instalada en el dispositivo. */
+    fun importFromDevice(packageName: String): LoadedExtensionInfo {
+        val info = try {
+            app.packageManager.getApplicationInfo(packageName, 0)
+        } catch (e: PackageManager.NameNotFoundException) {
+            throw KomaBridgeException("ExtensionNotFound", packageName)
+        }
+        return import(File(info.sourceDir))
+    }
+
     fun installed(): List<LoadedExtensionInfo> =
         dir.listFiles { f -> f.extension == "apk" }.orEmpty()
             .mapNotNull { runCatching { inspect(it) }.getOrNull() }

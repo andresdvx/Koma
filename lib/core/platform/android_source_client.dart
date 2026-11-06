@@ -40,6 +40,16 @@ class AndroidSourceClient implements SourceClient {
           .map(ExtensionInfo.fromJson)
           .toList();
 
+  /// Extensiones Mihon/Tachiyomi instaladas en el teléfono.
+  Future<List<ExtensionInfo>> listDeviceExtensions() async =>
+      (await _list('listDeviceExtensions')).map(ExtensionInfo.fromJson).toList();
+
+  /// Copia (sin modificar) el APK de una extensión instalada. Queda sin confiar.
+  Future<List<ExtensionInfo>> importDeviceExtension(String packageName) async =>
+      (await _list('importDeviceExtension', {'id': packageName}))
+          .map(ExtensionInfo.fromJson)
+          .toList();
+
   /// Confianza explícita del usuario antes de ejecutar código de terceros.
   Future<List<ExtensionInfo>> trustExtension(String extensionId) async =>
       (await _list('trustExtension', {'id': extensionId}))

@@ -13,9 +13,11 @@ final sourceClientProvider = Provider<SourceClient>((ref) {
   return FakeSourceClient();
 });
 
-final sourcesProvider = FutureProvider<List<MangaSourceInfo>>(
-  (ref) => ref.watch(sourceClientProvider).getSources(),
-);
+final sourcesProvider = FutureProvider<List<MangaSourceInfo>>((ref) async {
+  final client = ref.watch(sourceClientProvider);
+  await client.getExtensions(); // el motor recarga las extensiones de confianza
+  return client.getSources();
+});
 
 typedef SearchArgs = ({String sourceId, String query});
 

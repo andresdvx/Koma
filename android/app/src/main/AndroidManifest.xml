@@ -1,5 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Necesario para detectar extensiones Mihon/Tachiyomi instaladas (Android 11+). -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <application
+        android:usesCleartextTraffic="true"
         android:label="koma"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
