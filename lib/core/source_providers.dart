@@ -4,6 +4,7 @@ import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:koma_source_api/koma_source_api.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'platform/android_source_client.dart';
 import 'source_order.dart';
@@ -24,6 +25,24 @@ final sourcesProvider = FutureProvider<List<MangaSourceInfo>>((ref) async {
     PlatformDispatcher.instance.locale.languageCode,
   );
 });
+
+const _lastSourceKey = 'last_good_source';
+
+/// Última fuente que cargó resultados correctamente (null si no hay o falla el almacenamiento).
+final lastSourceProvider = FutureProvider<String?>((ref) async {
+  try {
+    return (await SharedPreferences.getInstance()).getString(_lastSourceKey);
+  } catch (_) {
+    return null;
+  }
+});
+
+Future<void> rememberGoodSource(String sourceId) async {
+  try {
+    await (await SharedPreferences.getInstance())
+        .setString(_lastSourceKey, sourceId);
+  } catch (_) {}
+}
 
 typedef MangaKey = ({String sourceId, String mangaId});
 

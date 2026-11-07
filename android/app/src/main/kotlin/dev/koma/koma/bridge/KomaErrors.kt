@@ -10,6 +10,10 @@ fun Throwable.toBridgeException(): KomaBridgeException = when (this) {
     is KomaBridgeException -> this
     is HttpException -> when (code) {
         401 -> KomaBridgeException("AuthenticationRequired", "HTTP 401")
+        403 -> KomaBridgeException(
+            "NetworkError",
+            "La fuente rechazó la solicitud (HTTP 403): puede haber restricción regional o protección anti-bots",
+        )
         404, 410 -> KomaBridgeException("ContentUnavailable", "HTTP $code")
         429 -> KomaBridgeException("RateLimited", "HTTP 429")
         else -> KomaBridgeException("NetworkError", "HTTP $code")
