@@ -15,6 +15,7 @@ data class LoadedExtensionInfo(
     val packageName: String,
     val name: String,
     val versionName: String,
+    val versionCode: Long,
     val language: String,
     val signatureSha256: String,
     val classNames: List<String>,
@@ -65,6 +66,8 @@ class ExtensionLoader(private val app: Application) {
             packageName = pkg.packageName,
             name = label,
             versionName = pkg.versionName ?: "?",
+            versionCode = if (Build.VERSION.SDK_INT >= 28) pkg.longVersionCode
+            else @Suppress("DEPRECATION") pkg.versionCode.toLong(),
             language = pkg.packageName.substringAfter("eu.kanade.tachiyomi.extension.").substringBefore('.'),
             signatureSha256 = signatureHash(pkg)
                 ?: throw KomaBridgeException("ExtensionNotTrusted", "APK sin firma"),
@@ -118,6 +121,17 @@ class ExtensionLoader(private val app: Application) {
             throw KomaBridgeException("ExtensionNotFound", packageName)
         }
         return import(File(info.sourceDir))
+    }
+
+    /** Elimina el APK importado y la confianza concedida a esa extensión. */
+    fun uninstall(packageName: String) {
+        val f = File(dir, "$packageName.apk")
+        if (!f.exists()) throw KomaBridgeException("ExtensionNotFound", packageName)
+        f.setWritable(true)
+        f.delete()
+        val set = prefs.getStringSet(TRUST_KEY, emptySet())!!
+            .filterNot { it.startsWith("$packageName:") }.toSet()
+        prefs.edit().putStringSet(TRUST_KEY, set).apply()
     }
 
     fun installed(): List<LoadedExtensionInfo> =

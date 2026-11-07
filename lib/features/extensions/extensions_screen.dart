@@ -10,6 +10,19 @@ import '../../core/source_providers.dart';
 import '../../shared/widgets/async_view.dart';
 import '../../shared/widgets/pressable.dart';
 
+import 'catalog_view.dart';
+
+/// `true` = muestra el catálogo de repositorios; `false` = extensiones instaladas.
+class _CatalogTab extends Notifier<bool> {
+  @override
+  bool build() => false;
+  void set(bool v) => state = v;
+}
+
+final _catalogTabProvider = NotifierProvider<_CatalogTab, bool>(
+  _CatalogTab.new,
+);
+
 typedef ExtensionRow = ({ExtensionInfo info, bool imported});
 
 /// Extensiones importadas en Koma + las instaladas en el teléfono sin importar.
@@ -39,8 +52,11 @@ class ExtensionsScreen extends ConsumerWidget {
     final client = ref.read(sourceClientProvider);
     final messenger = ScaffoldMessenger.of(context);
     if (client is! AndroidSourceClient) {
-      messenger.showSnackBar(const SnackBar(
-          content: Text('Las extensiones solo están disponibles en Android')));
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Las extensiones solo están disponibles en Android'),
+        ),
+      );
       return;
     }
     try {
@@ -50,6 +66,70 @@ class ExtensionsScreen extends ConsumerWidget {
     }
     ref.invalidate(extensionRowsProvider);
     ref.invalidate(sourcesProvider);
+    ref.invalidate(catalogProvider);
+  }
+
+  /// Instala/actualiza desde el catálogo y pide confianza si aún no la tiene.
+  Future<void> _installFromCatalog(
+    BuildContext context,
+    WidgetRef ref,
+    CatalogEntry entry,
+  ) async {
+    final client = ref.read(sourceClientProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    if (client is! AndroidSourceClient) return;
+    List<ExtensionInfo> after;
+    try {
+      after = await client.installExtension(entry.repo, entry.id);
+    } on KomaError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+      return;
+    }
+    ref.invalidate(extensionRowsProvider);
+    ref.invalidate(catalogProvider);
+    final info = after.where((e) => e.id == entry.id).firstOrNull;
+    if (info == null || info.trusted) {
+      ref.invalidate(sourcesProvider);
+      messenger.showSnackBar(SnackBar(content: Text('${entry.name} lista')));
+      return;
+    }
+    if (!context.mounted) return;
+    if (await _confirmTrust(context, info) && context.mounted) {
+      await _run(context, ref, (c) => c.trustExtension(info.id));
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Instalada sin confiar; actívala desde Instaladas'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmUninstall(
+    BuildContext context,
+    WidgetRef ref,
+    ExtensionInfo e,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('¿Quitar ${e.name}?'),
+        content: const Text('Se elimina de Koma y se revoca la confianza.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Quitar'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && context.mounted) {
+      await _run(context, ref, (c) => c.uninstallExtension(e.id));
+    }
   }
 
   Future<bool> _confirmTrust(BuildContext context, ExtensionInfo e) async {
@@ -63,8 +143,10 @@ class ExtensionsScreen extends ConsumerWidget {
       transitionBuilder: (_, anim, _, child) => FadeTransition(
         opacity: anim,
         child: ScaleTransition(
-          scale: Tween(begin: 0.92, end: 1.0).animate(
-              CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
+          scale: Tween(
+            begin: 0.92,
+            end: 1.0,
+          ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutBack)),
           child: child,
         ),
       ),
@@ -90,9 +172,14 @@ class ExtensionsScreen extends ConsumerWidget {
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                        color: c.accentSoft, shape: BoxShape.circle),
-                    child: Icon(Icons.shield_moon_rounded,
-                        color: c.accent, size: 28),
+                      color: c.accentSoft,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.shield_moon_rounded,
+                      color: c.accent,
+                      size: 28,
+                    ),
                   ),
                   const SizedBox(height: 18),
                   Text('¿Confiar en ${e.name}?', style: t.headlineSmall),
@@ -130,9 +217,12 @@ class ExtensionsScreen extends ConsumerWidget {
                               borderRadius: BorderRadius.circular(20),
                             ),
                             alignment: Alignment.center,
-                            child: Text('Confiar',
-                                style:
-                                    t.labelLarge?.copyWith(color: Colors.white)),
+                            child: Text(
+                              'Confiar',
+                              style: t.labelLarge?.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -151,6 +241,7 @@ class ExtensionsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rows = ref.watch(extensionRowsProvider);
+    final showCatalog = ref.watch(_catalogTabProvider);
     final t = Theme.of(context).textTheme;
     final c = context.koma;
     return SafeArea(
@@ -163,7 +254,10 @@ class ExtensionsScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Extensiones', style: t.displayLarge?.copyWith(fontSize: 38)),
+                Text(
+                  'Extensiones',
+                  style: t.displayLarge?.copyWith(fontSize: 38),
+                ),
                 const SizedBox(height: 6),
                 Text(
                   'Cada extensión añade fuentes de lectura. Importa y confía solo en las que conozcas.',
@@ -173,43 +267,82 @@ class ExtensionsScreen extends ConsumerWidget {
             ).animate().fadeIn(duration: 450.ms).slideY(begin: 0.08),
           ),
           const SizedBox(height: 14),
-          Expanded(
-            child: AsyncView(
-              value: rows,
-              onRetry: () => ref.invalidate(extensionRowsProvider),
-              builder: (list) => list.isEmpty
-                  ? Center(
-                      child: Text('No se encontraron extensiones',
-                          style: t.bodyMedium?.copyWith(color: c.muted)),
-                    )
-                  : ListView.separated(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(18, 4, 18, 130),
-                      itemCount: list.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 12),
-                      itemBuilder: (context, i) {
-                        final r = list[i];
-                        return _ExtensionCard(
-                          row: r,
-                          onImport: () => _run(context, ref,
-                              (c) => c.importDeviceExtension(r.info.id)),
-                          onTrust: () async {
-                            if (await _confirmTrust(context, r.info) &&
-                                context.mounted) {
-                              await _run(context, ref,
-                                  (c) => c.trustExtension(r.info.id));
-                            }
-                          },
-                        )
-                            .animate()
-                            .fadeIn(
-                              delay: Duration(milliseconds: 60 * i),
-                              duration: 420.ms,
-                            )
-                            .slideY(begin: 0.12, curve: Curves.easeOutCubic);
-                      },
-                    ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+            child: SegmentedButton<bool>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: false, label: Text('Instaladas')),
+                ButtonSegment(value: true, label: Text('Catálogo')),
+              ],
+              selected: {showCatalog},
+              onSelectionChanged: (s) =>
+                  ref.read(_catalogTabProvider.notifier).set(s.first),
             ),
+          ),
+          Expanded(
+            child: showCatalog
+                ? CatalogView(
+                    onInstall: (e) => _installFromCatalog(context, ref, e),
+                  )
+                : AsyncView(
+                    value: rows,
+                    onRetry: () => ref.invalidate(extensionRowsProvider),
+                    builder: (list) => list.isEmpty
+                        ? Center(
+                            child: Text(
+                              'No se encontraron extensiones',
+                              style: t.bodyMedium?.copyWith(color: c.muted),
+                            ),
+                          )
+                        : ListView.separated(
+                            physics: const BouncingScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(18, 4, 18, 130),
+                            itemCount: list.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, i) {
+                              final r = list[i];
+                              return _ExtensionCard(
+                                    row: r,
+                                    onLongPress: r.imported
+                                        ? () => _confirmUninstall(
+                                            context,
+                                            ref,
+                                            r.info,
+                                          )
+                                        : null,
+                                    onImport: () => _run(
+                                      context,
+                                      ref,
+                                      (c) => c.importDeviceExtension(r.info.id),
+                                    ),
+                                    onTrust: () async {
+                                      if (await _confirmTrust(
+                                            context,
+                                            r.info,
+                                          ) &&
+                                          context.mounted) {
+                                        await _run(
+                                          context,
+                                          ref,
+                                          (c) => c.trustExtension(r.info.id),
+                                        );
+                                      }
+                                    },
+                                  )
+                                  .animate()
+                                  .fadeIn(
+                                    delay: Duration(milliseconds: 60 * i),
+                                    duration: 420.ms,
+                                  )
+                                  .slideY(
+                                    begin: 0.12,
+                                    curve: Curves.easeOutCubic,
+                                  );
+                            },
+                          ),
+                  ),
           ),
         ],
       ),
@@ -222,8 +355,10 @@ class _ExtensionCard extends StatelessWidget {
     required this.row,
     required this.onImport,
     required this.onTrust,
+    this.onLongPress,
   });
 
+  final VoidCallback? onLongPress;
   final ExtensionRow row;
   final VoidCallback onImport;
   final VoidCallback onTrust;
@@ -233,84 +368,101 @@ class _ExtensionCard extends StatelessWidget {
     final c = context.koma;
     final t = Theme.of(context).textTheme;
     final info = row.info;
-    final grad = KomaColors
-        .coverGradients[info.id.hashCode.abs() % KomaColors.coverGradients.length];
+    final grad =
+        KomaColors.coverGradients[info.id.hashCode.abs() %
+            KomaColors.coverGradients.length];
     final trusted = row.imported && info.trusted;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(26),
-        border: Border.all(color: trusted ? c.accent.withValues(alpha: 0.5) : c.line),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: grad,
+    return GestureDetector(
+      onLongPress: onLongPress,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 400),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: c.surface,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(
+            color: trusted ? c.accent.withValues(alpha: 0.5) : c.line,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: grad,
+                ),
+              ),
+              child: Text(
+                info.name.isEmpty ? '?' : info.name[0].toUpperCase(),
+                style: t.titleLarge?.copyWith(color: Colors.white),
               ),
             ),
-            child: Text(
-              info.name.isEmpty ? '?' : info.name[0].toUpperCase(),
-              style: t.titleLarge?.copyWith(color: Colors.white),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(info.name,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    info.name,
                     style: t.titleMedium,
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 3),
-                Text('v${info.version} · ${info.language.toUpperCase()}',
-                    style: t.labelMedium),
-                const SizedBox(height: 2),
-                Text(info.id,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'v${info.version} · ${info.language.toUpperCase()}',
+                    style: t.labelMedium,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    info.id,
                     style: t.bodySmall?.copyWith(fontSize: 11),
                     maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
-              ],
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 350),
-            switchInCurve: Curves.easeOutBack,
-            child: !row.imported
-                ? _Action(
-                    key: const ValueKey('import'),
-                    label: 'Importar',
-                    filled: false,
-                    onTap: onImport,
-                  )
-                : trusted
-                    ? Container(
-                        key: const ValueKey('ok'),
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(
-                            color: c.accentSoft, shape: BoxShape.circle),
-                        child: Icon(Icons.verified_rounded,
-                            color: c.accent, size: 24),
-                      )
-                    : _Action(
-                        key: const ValueKey('trust'),
-                        label: 'Confiar',
-                        filled: true,
-                        onTap: onTrust,
+            const SizedBox(width: 10),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 350),
+              switchInCurve: Curves.easeOutBack,
+              child: !row.imported
+                  ? _Action(
+                      key: const ValueKey('import'),
+                      label: 'Importar',
+                      filled: false,
+                      onTap: onImport,
+                    )
+                  : trusted
+                  ? Container(
+                      key: const ValueKey('ok'),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: c.accentSoft,
+                        shape: BoxShape.circle,
                       ),
-          ),
-        ],
+                      child: Icon(
+                        Icons.verified_rounded,
+                        color: c.accent,
+                        size: 24,
+                      ),
+                    )
+                  : _Action(
+                      key: const ValueKey('trust'),
+                      label: 'Confiar',
+                      filled: true,
+                      onTap: onTrust,
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -342,9 +494,7 @@ class _Action extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: Theme.of(context)
-              .textTheme
-              .labelLarge
+          style: Theme.of(context).textTheme.labelLarge
               ?.copyWith(color: filled ? Colors.white : c.paper),
         ),
       ),

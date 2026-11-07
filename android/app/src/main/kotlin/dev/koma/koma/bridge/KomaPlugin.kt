@@ -26,6 +26,7 @@ class KomaPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     private lateinit var loader: ExtensionLoader
     private lateinit var registry: ExtensionRegistry
     private lateinit var adapter: SourceAdapter
+    private lateinit var repos: RepositoryManager
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         val app = binding.applicationContext as Application
@@ -33,6 +34,7 @@ class KomaPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         loader = ExtensionLoader(app)
         registry = ExtensionRegistry(loader)
         adapter = SourceAdapter(registry)
+        repos = RepositoryManager(app, loader)
         channel = MethodChannel(binding.binaryMessenger, CHANNEL).also { it.setMethodCallHandler(this) }
     }
 
@@ -82,6 +84,21 @@ class KomaPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
             }
             "trustExtension" -> {
                 registry.trust(arg("id"))
+                registry.extensions()
+            }
+            "getRepositories" -> repos.repositories()
+            "addRepository" -> repos.add(arg("url"))
+            "removeRepository" -> repos.remove(arg("url"))
+            "getCatalog" -> {
+                registry.refresh()
+                repos.catalog(registry::versionCode)
+            }
+            "installExtension" -> {
+                registry.add(repos.install(arg("repo"), arg("id")))
+                registry.extensions()
+            }
+            "uninstallExtension" -> {
+                registry.remove(arg("id"))
                 registry.extensions()
             }
             "getSources" -> registry.sourceList()

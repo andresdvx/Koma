@@ -28,6 +28,16 @@ class ExtensionRegistry(private val loader: ExtensionLoader) {
     }
 
     @Synchronized
+    fun remove(extensionId: String) {
+        loader.uninstall(extensionId)
+        infos.remove(extensionId)
+        sources.entries.removeAll { it.value.first == extensionId }
+    }
+
+    @Synchronized
+    fun versionCode(extensionId: String): Long? = infos[extensionId]?.versionCode
+
+    @Synchronized
     fun trust(extensionId: String) {
         val info = infos[extensionId] ?: throw KomaBridgeException("ExtensionNotFound", extensionId)
         loader.trust(info)

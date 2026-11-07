@@ -1,6 +1,42 @@
 import 'package:flutter/services.dart';
 import 'package:koma_source_api/koma_source_api.dart';
 
+enum CatalogStatus { available, installed, update }
+
+/// Extensión publicada en un repositorio.
+class CatalogEntry {
+  const CatalogEntry({
+    required this.repo,
+    required this.id,
+    required this.name,
+    required this.version,
+    required this.language,
+    required this.nsfw,
+    required this.status,
+  });
+
+  final String repo;
+  final String id;
+  final String name;
+  final String version;
+  final String language;
+  final bool nsfw;
+  final CatalogStatus status;
+
+  factory CatalogEntry.fromJson(Map<String, dynamic> j) => CatalogEntry(
+        repo: j['repo'] as String,
+        id: j['id'] as String,
+        name: j['name'] as String,
+        version: j['version'] as String,
+        language: j['language'] as String,
+        nsfw: j['nsfw'] as bool? ?? false,
+        status: CatalogStatus.values.firstWhere(
+          (s) => s.name == j['status'],
+          orElse: () => CatalogStatus.available,
+        ),
+      );
+}
+
 /// Implementación de [SourceClient] sobre el bridge Kotlin (MethodChannel).
 class AndroidSourceClient implements SourceClient {
   AndroidSourceClient([MethodChannel? channel])
@@ -53,6 +89,36 @@ class AndroidSourceClient implements SourceClient {
   /// Confianza explícita del usuario antes de ejecutar código de terceros.
   Future<List<ExtensionInfo>> trustExtension(String extensionId) async =>
       (await _list('trustExtension', {'id': extensionId}))
+          .map(ExtensionInfo.fromJson)
+          .toList();
+
+  // --- Repositorios y catálogo (específico de Android) -------------------------------
+
+  Future<List<String>> getRepositories() async =>
+      ((await _call<List<Object?>?>('getRepositories')) ?? const [])
+          .cast<String>();
+
+  Future<List<String>> addRepository(String url) async =>
+      ((await _call<List<Object?>?>('addRepository', {'url': url})) ??
+              const [])
+          .cast<String>();
+
+  Future<List<String>> removeRepository(String url) async =>
+      ((await _call<List<Object?>?>('removeRepository', {'url': url})) ??
+              const [])
+          .cast<String>();
+
+  Future<List<CatalogEntry>> getCatalog() async =>
+      (await _list('getCatalog')).map(CatalogEntry.fromJson).toList();
+
+  /// Descarga e instala (sin confiar) o actualiza una extensión de un repositorio.
+  Future<List<ExtensionInfo>> installExtension(String repo, String id) async =>
+      (await _list('installExtension', {'repo': repo, 'id': id}))
+          .map(ExtensionInfo.fromJson)
+          .toList();
+
+  Future<List<ExtensionInfo>> uninstallExtension(String id) async =>
+      (await _list('uninstallExtension', {'id': id}))
           .map(ExtensionInfo.fromJson)
           .toList();
 
