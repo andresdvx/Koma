@@ -92,6 +92,16 @@ class AndroidSourceClient implements SourceClient {
           .map(ExtensionInfo.fromJson)
           .toList();
 
+  // --- Archivos locales CBZ/ZIP ------------------------------------------------------
+
+  /// Copia un CBZ/ZIP al almacenamiento de Koma tras validarlo. Devuelve su nombre.
+  Future<String> importLocal(String path) async =>
+      await _call<String>('importLocal', {'path': path});
+
+  Future<void> deleteLocal(String fileName) async {
+    await _call<Object?>('deleteLocal', {'id': fileName});
+  }
+
   // --- Repositorios y catálogo (específico de Android) -------------------------------
 
   Future<List<String>> getRepositories() async =>
