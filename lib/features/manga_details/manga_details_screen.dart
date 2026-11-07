@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:koma_source_api/koma_source_api.dart';
 
 import '../../app/theme.dart';
+import '../../core/db/database.dart';
+import '../../core/db/db_providers.dart';
 import '../../core/source_providers.dart';
 import '../../shared/widgets/async_view.dart';
 import '../../shared/widgets/cover.dart';
@@ -36,8 +38,70 @@ class _MangaDetailsScreenState extends ConsumerState<MangaDetailsScreen> {
   bool _descending = true;
   bool _expanded = false;
 
+  LibKey get _libKey => (sourceId: widget.sourceId, mangaId: widget.mangaId);
+
+  String get _mangaTitle {
+    final d = ref
+        .read(mangaDetailProvider(
+            (sourceId: widget.sourceId, mangaId: widget.mangaId)))
+        .value;
+    return d?.title ?? widget.summary?.title ?? '';
+  }
+
+  String? get _mangaCover {
+    final d = ref
+        .read(mangaDetailProvider(
+            (sourceId: widget.sourceId, mangaId: widget.mangaId)))
+        .value;
+    return d?.coverUrl ?? widget.summary?.coverUrl;
+  }
+
+  Future<void> _toggleFavorite(bool inLibrary) async {
+    HapticFeedback.mediumImpact();
+    final db = ref.read(databaseProvider);
+    if (inLibrary) {
+      await db.removeFromLibrary(widget.sourceId, widget.mangaId);
+    } else {
+      await db.addToLibrary(
+        sourceId: widget.sourceId,
+        mangaId: widget.mangaId,
+        title: _mangaTitle,
+        coverUrl: _mangaCover,
+      );
+    }
+  }
+
+  /// Capítulo por el que seguir: el último abierto, o el siguiente si ya lo terminó.
+  Chapter? _resumeChapter(
+    List<Chapter> list,
+    Map<String, ReadingHistoryData> progress,
+  ) {
+    if (progress.isEmpty || list.isEmpty) return null;
+    final byId = {for (final c in list) c.id: c};
+    final recent = progress.values.where((h) => byId.containsKey(h.chapterId)).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    if (recent.isEmpty) return null;
+    final last = byId[recent.first.chapterId]!;
+    if (!recent.first.finished) return last;
+    final n = last.number;
+    if (n != null) {
+      final next = list.where((c) => c.number != null && c.number! > n).toList()
+        ..sort((a, b) => a.number!.compareTo(b.number!));
+      if (next.isNotEmpty) return next.first;
+    }
+    return last;
+  }
+
   void _openChapter(Chapter c) {
     HapticFeedback.selectionClick();
+    ref.read(databaseProvider).touchChapter(
+          sourceId: widget.sourceId,
+          mangaId: widget.mangaId,
+          mangaTitle: _mangaTitle,
+          coverUrl: _mangaCover,
+          chapterId: c.id,
+          chapterName: c.name,
+        );
     context.push(
       '/reader/${Uri.encodeComponent(widget.sourceId)}/${Uri.encodeComponent(c.id)}'
       '?title=${Uri.encodeQueryComponent(c.name)}',
@@ -63,6 +127,7 @@ class _MangaDetailsScreenState extends ConsumerState<MangaDetailsScreen> {
     final d = detail.value;
     final title = d?.title ?? widget.summary?.title ?? '';
     final coverUrl = d?.coverUrl ?? widget.summary?.coverUrl;
+    final inLibrary = ref.watch(inLibraryProvider(_libKey)).value ?? false;
 
     return Scaffold(
       body: CustomScrollView(
@@ -75,6 +140,8 @@ class _MangaDetailsScreenState extends ConsumerState<MangaDetailsScreen> {
               coverUrl: coverUrl,
               author: d?.author,
               status: d?.status,
+              inLibrary: inLibrary,
+              onFavorite: () => _toggleFavorite(inLibrary),
             ),
           ),
           SliverToBoxAdapter(child: _body(detail, chapters)),
@@ -111,7 +178,10 @@ class _MangaDetailsScreenState extends ConsumerState<MangaDetailsScreen> {
         ),
       );
     }
-    final first = _firstChapter(chapters.value ?? const []);
+    final chapterList = chapters.value ?? const <Chapter>[];
+    final progress = ref.watch(mangaProgressProvider(_libKey)).value ?? const {};
+    final resume = _resumeChapter(chapterList, progress);
+    final first = resume ?? _firstChapter(chapterList);
     final desc = (d.description ?? '').trim();
     return Padding(
       padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),
@@ -175,7 +245,9 @@ class _MangaDetailsScreenState extends ConsumerState<MangaDetailsScreen> {
                 child: _CtaButton(
                   label: first == null
                       ? 'Cargando capítulos…'
-                      : 'Empezar a leer',
+                      : resume != null
+                          ? 'Continuar leyendo'
+                          : 'Empezar a leer',
                   sub: first?.name,
                   enabled: first != null,
                   onTap: first == null ? null : () => _openChapter(first),
@@ -271,6 +343,7 @@ class _MangaDetailsScreenState extends ConsumerState<MangaDetailsScreen> {
       ];
     }
     final shown = _descending ? list : list.reversed.toList();
+    final progress = ref.watch(mangaProgressProvider(_libKey)).value ?? const {};
     return [
       SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 22),
@@ -280,6 +353,8 @@ class _MangaDetailsScreenState extends ConsumerState<MangaDetailsScreen> {
           itemBuilder: (_, i) => _ChapterTile(
             chapter: shown[i],
             index: i,
+            read: progress[shown[i].id]?.finished ?? false,
+            progress: progress[shown[i].id]?.progress ?? 0,
             onTap: () => _openChapter(shown[i]),
           ),
         ),
@@ -295,8 +370,12 @@ class _Hero extends StatelessWidget {
     required this.coverUrl,
     required this.author,
     required this.status,
+    required this.inLibrary,
+    required this.onFavorite,
   });
 
+  final bool inLibrary;
+  final VoidCallback onFavorite;
   final String heroTag;
   final String title;
   final String? coverUrl;
@@ -414,6 +493,34 @@ class _Hero extends StatelessWidget {
             ),
           ),
         ),
+        Positioned(
+          top: top + 10,
+          right: 14,
+          child: Pressable(
+            onTap: onFavorite,
+            child: ClipOval(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  color: c.glass,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    transitionBuilder: (w, a) => ScaleTransition(scale: a, child: w),
+                    child: Icon(
+                      inLibrary
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      key: ValueKey(inLibrary),
+                      color: inLibrary ? c.accent : c.paper,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -491,8 +598,12 @@ class _ChapterTile extends StatelessWidget {
     required this.chapter,
     required this.index,
     required this.onTap,
+    this.read = false,
+    this.progress = 0,
   });
 
+  final bool read;
+  final double progress;
   final Chapter chapter;
   final int index;
   final VoidCallback onTap;
@@ -520,7 +631,9 @@ class _ChapterTile extends StatelessWidget {
     final tile = Pressable(
       onTap: onTap,
       scale: 0.97,
-      child: Container(
+      child: Opacity(
+        opacity: read ? 0.55 : 1,
+        child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
           color: c.surface,
@@ -548,12 +661,24 @@ class _ChapterTile extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: t.titleSmall),
                   if (_date != null) Text(_date!, style: t.bodySmall),
+                  if (!read && progress > 0.02)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 3,
+                        color: c.accent,
+                        backgroundColor: c.line,
+                      ),
+                    ),
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: c.muted),
+            Icon(read ? Icons.check_circle_rounded : Icons.chevron_right_rounded,
+                color: read ? c.accent : c.muted),
           ],
         ),
+      ),
       ),
     );
     if (index > 14) return tile;

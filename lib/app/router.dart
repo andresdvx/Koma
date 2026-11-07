@@ -4,6 +4,7 @@ import 'package:koma_source_api/koma_source_api.dart';
 
 import '../features/browse/browse_screen.dart';
 import '../features/extensions/extensions_screen.dart';
+import '../features/library/library_screen.dart';
 import '../features/manga_details/manga_details_screen.dart';
 import '../features/reader/reader_screen.dart';
 import '../shared/widgets/dock.dart';
@@ -64,6 +65,10 @@ GoRouter buildRouter() {
             pageBuilder: (_, s) => _fade(s, const BrowseScreen()),
           ),
           GoRoute(
+            path: '/library',
+            pageBuilder: (_, s) => _fade(s, const LibraryScreen()),
+          ),
+          GoRoute(
             path: '/extensions',
             pageBuilder: (_, s) => _fade(s, const ExtensionsScreen()),
           ),
@@ -106,12 +111,17 @@ class AppShell extends StatelessWidget {
 
   static const _items = [
     DockItem(Icons.auto_stories_rounded, 'Explorar'),
+    DockItem(Icons.favorite_rounded, 'Biblioteca'),
     DockItem(Icons.extension_rounded, 'Extensiones'),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final index = location.startsWith('/extensions') ? 1 : 0;
+    final index = location.startsWith('/extensions')
+        ? 2
+        : location.startsWith('/library')
+            ? 1
+            : 0;
     return Scaffold(
       body: Stack(
         children: [
@@ -124,7 +134,7 @@ class AppShell extends StatelessWidget {
               child: Dock(
                 items: _items,
                 index: index,
-                onSelect: (i) => context.go(i == 0 ? '/' : '/extensions'),
+                onSelect: (i) => context.go(const ['/', '/library', '/extensions'][i]),
               ),
             ),
           ),
