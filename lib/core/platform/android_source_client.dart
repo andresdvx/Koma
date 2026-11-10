@@ -24,23 +24,46 @@ class CatalogEntry {
   final CatalogStatus status;
 
   factory CatalogEntry.fromJson(Map<String, dynamic> j) => CatalogEntry(
-        repo: j['repo'] as String,
-        id: j['id'] as String,
-        name: j['name'] as String,
-        version: j['version'] as String,
-        language: j['language'] as String,
-        nsfw: j['nsfw'] as bool? ?? false,
-        status: CatalogStatus.values.firstWhere(
-          (s) => s.name == j['status'],
-          orElse: () => CatalogStatus.available,
-        ),
-      );
+    repo: j['repo'] as String,
+    id: j['id'] as String,
+    name: j['name'] as String,
+    version: j['version'] as String,
+    language: j['language'] as String,
+    nsfw: j['nsfw'] as bool? ?? false,
+    status: CatalogStatus.values.firstWhere(
+      (s) => s.name == j['status'],
+      orElse: () => CatalogStatus.available,
+    ),
+  );
+}
+
+/// Resultado de añadir un repositorio.
+class RepositoryAddResult {
+  const RepositoryAddResult({
+    required this.repositories,
+    required this.resolved,
+    required this.alreadyPresent,
+  });
+
+  /// Lista completa tras la operación.
+  final List<String> repositories;
+
+  /// Dirección real detectada y validada (puede diferir de lo que se pegó).
+  final String resolved;
+
+  /// `true` si ese repositorio ya estaba en la lista.
+  final bool alreadyPresent;
+
+  /// Texto para el usuario.
+  String get message => alreadyPresent
+      ? 'Detecté $resolved. Ya estaba en tu lista.'
+      : 'Repositorio añadido: $resolved';
 }
 
 /// Implementación de [SourceClient] sobre el bridge Kotlin (MethodChannel).
 class AndroidSourceClient implements SourceClient {
   AndroidSourceClient([MethodChannel? channel])
-      : _channel = channel ?? const MethodChannel('dev.koma/source');
+    : _channel = channel ?? const MethodChannel('dev.koma/source');
 
   final MethodChannel _channel;
 
@@ -72,25 +95,27 @@ class AndroidSourceClient implements SourceClient {
 
   /// Importa un APK de extensión (sin modificarlo). Queda sin confiar.
   Future<List<ExtensionInfo>> importExtension(String apkPath) async =>
-      (await _list('importExtension', {'path': apkPath}))
-          .map(ExtensionInfo.fromJson)
-          .toList();
+      (await _list('importExtension', {
+        'path': apkPath,
+      })).map(ExtensionInfo.fromJson).toList();
 
   /// Extensiones Mihon/Tachiyomi instaladas en el teléfono.
   Future<List<ExtensionInfo>> listDeviceExtensions() async =>
-      (await _list('listDeviceExtensions')).map(ExtensionInfo.fromJson).toList();
+      (await _list('listDeviceExtensions'))
+          .map(ExtensionInfo.fromJson)
+          .toList();
 
   /// Copia (sin modificar) el APK de una extensión instalada. Queda sin confiar.
   Future<List<ExtensionInfo>> importDeviceExtension(String packageName) async =>
-      (await _list('importDeviceExtension', {'id': packageName}))
-          .map(ExtensionInfo.fromJson)
-          .toList();
+      (await _list('importDeviceExtension', {
+        'id': packageName,
+      })).map(ExtensionInfo.fromJson).toList();
 
   /// Confianza explícita del usuario antes de ejecutar código de terceros.
   Future<List<ExtensionInfo>> trustExtension(String extensionId) async =>
-      (await _list('trustExtension', {'id': extensionId}))
-          .map(ExtensionInfo.fromJson)
-          .toList();
+      (await _list('trustExtension', {
+        'id': extensionId,
+      })).map(ExtensionInfo.fromJson).toList();
 
   // --- Archivos locales CBZ/ZIP ------------------------------------------------------
 
@@ -108,10 +133,17 @@ class AndroidSourceClient implements SourceClient {
       ((await _call<List<Object?>?>('getRepositories')) ?? const [])
           .cast<String>();
 
-  Future<List<String>> addRepository(String url) async =>
-      ((await _call<List<Object?>?>('addRepository', {'url': url})) ??
-              const [])
-          .cast<String>();
+  /// Añade un repositorio (el motor resuelve y valida la URL pegada).
+  Future<RepositoryAddResult> addRepository(String url) async {
+    final m = Map<String, dynamic>.from(
+      await _call<Map<Object?, Object?>>('addRepository', {'url': url}),
+    );
+    return RepositoryAddResult(
+      repositories: (m['repositories'] as List).cast<String>(),
+      resolved: m['resolved'] as String,
+      alreadyPresent: m['alreadyPresent'] as bool,
+    );
+  }
 
   Future<List<String>> removeRepository(String url) async =>
       ((await _call<List<Object?>?>('removeRepository', {'url': url})) ??
@@ -123,14 +155,15 @@ class AndroidSourceClient implements SourceClient {
 
   /// Descarga e instala (sin confiar) o actualiza una extensión de un repositorio.
   Future<List<ExtensionInfo>> installExtension(String repo, String id) async =>
-      (await _list('installExtension', {'repo': repo, 'id': id}))
-          .map(ExtensionInfo.fromJson)
-          .toList();
+      (await _list('installExtension', {
+        'repo': repo,
+        'id': id,
+      })).map(ExtensionInfo.fromJson).toList();
 
   Future<List<ExtensionInfo>> uninstallExtension(String id) async =>
-      (await _list('uninstallExtension', {'id': id}))
-          .map(ExtensionInfo.fromJson)
-          .toList();
+      (await _list('uninstallExtension', {
+        'id': id,
+      })).map(ExtensionInfo.fromJson).toList();
 
   @override
   Future<List<MangaSourceInfo>> getSources() async =>
@@ -141,48 +174,55 @@ class AndroidSourceClient implements SourceClient {
     required String sourceId,
     required String query,
     required int page,
-  }) async =>
-      MangaPageResult.fromJson(_map(await _call<Object?>('searchManga', {
+  }) async => MangaPageResult.fromJson(
+    _map(
+      await _call<Object?>('searchManga', {
         'sourceId': sourceId,
         'query': query,
         'page': page,
-      })));
+      }),
+    ),
+  );
 
   @override
   Future<MangaDetail> getManga({
     required String sourceId,
     required String mangaId,
-  }) async =>
-      MangaDetail.fromJson(_map(await _call<Object?>(
-          'getManga', {'sourceId': sourceId, 'mangaId': mangaId})));
+  }) async => MangaDetail.fromJson(
+    _map(
+      await _call<Object?>('getManga', {
+        'sourceId': sourceId,
+        'mangaId': mangaId,
+      }),
+    ),
+  );
 
   @override
   Future<List<Chapter>> getChapters({
     required String sourceId,
     required String mangaId,
-  }) async =>
-      (await _list('getChapters', {'sourceId': sourceId, 'mangaId': mangaId}))
-          .map(Chapter.fromJson)
-          .toList();
+  }) async => (await _list('getChapters', {
+    'sourceId': sourceId,
+    'mangaId': mangaId,
+  })).map(Chapter.fromJson).toList();
 
   @override
   Future<List<ReaderPage>> getPages({
     required String sourceId,
     required String chapterId,
-  }) async =>
-      (await _list('getPages', {'sourceId': sourceId, 'chapterId': chapterId}))
-          .map(ReaderPage.fromJson)
-          .toList();
+  }) async => (await _list('getPages', {
+    'sourceId': sourceId,
+    'chapterId': chapterId,
+  })).map(ReaderPage.fromJson).toList();
 
   @override
   Future<Uint8List> getPageImage({
     required String sourceId,
     required String chapterId,
     required int pageIndex,
-  }) =>
-      _call<Uint8List>('getPageImage', {
-        'sourceId': sourceId,
-        'chapterId': chapterId,
-        'pageIndex': pageIndex,
-      });
+  }) => _call<Uint8List>('getPageImage', {
+    'sourceId': sourceId,
+    'chapterId': chapterId,
+    'pageIndex': pageIndex,
+  });
 }

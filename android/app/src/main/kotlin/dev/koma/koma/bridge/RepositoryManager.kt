@@ -38,7 +38,7 @@ class RepositoryManager(private val app: Application, private val loader: Extens
      * la URL de su `index.min.json`, un enlace `mihon://add-repo?url=…` o la página web / repo
      * de GitHub que lo describe. Cada candidato se valida descargando su índice antes de guardarlo.
      */
-    fun add(rawUrl: String): List<String> {
+    fun add(rawUrl: String): Map<String, Any?> {
         val candidates = candidatesFor(rawUrl)
         val failures = mutableListOf<String>()
         for (base in candidates) {
@@ -48,8 +48,14 @@ class RepositoryManager(private val app: Application, private val loader: Extens
                 failures += "$base (${t.message ?: t.javaClass.simpleName})"
                 continue
             }
+            val alreadyPresent = base in repositories()
             save(repositories() + base)
-            return repositories()
+            // `resolved` es la dirección real detectada (puede diferir de lo pegado).
+            return mapOf(
+                "repositories" to repositories(),
+                "resolved" to base,
+                "alreadyPresent" to alreadyPresent,
+            )
         }
         throw KomaBridgeException(
             "ExtensionIncompatible",

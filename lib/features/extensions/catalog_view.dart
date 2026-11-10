@@ -256,24 +256,22 @@ class _ReposSheetState extends ConsumerState<_ReposSheet> {
     super.dispose();
   }
 
+  /// Ejecuta una operación sobre los repositorios; `action` devuelve el mensaje
+  /// que se muestra al usuario (siempre hay respuesta visible, éxito o error).
   Future<void> _change(
-    Future<List<String>> Function(AndroidSourceClient c) action,
+    Future<String> Function(AndroidSourceClient c) action,
   ) async {
     final client = ref.read(sourceClientProvider);
     if (client is! AndroidSourceClient || _busy) return;
-    final before = ref.read(repositoriesProvider).asData?.value ?? const [];
     setState(() {
       _busy = true;
       _error = null;
       _info = null;
     });
     try {
-      final after = await action(client);
+      final message = await action(client);
       if (!mounted) return;
-      final added = after.where((r) => !before.contains(r)).toList();
-      setState(() {
-        _info = added.isEmpty ? null : 'Repositorio añadido: ${added.first}';
-      });
+      setState(() => _info = message);
       _ctrl.clear();
     } on KomaError catch (e) {
       if (mounted) {
@@ -284,6 +282,14 @@ class _ReposSheetState extends ConsumerState<_ReposSheet> {
     }
     ref.invalidate(repositoriesProvider);
     ref.invalidate(catalogProvider);
+  }
+
+  Future<String> _add(AndroidSourceClient c, String url) async =>
+      (await c.addRepository(url)).message;
+
+  Future<String> _remove(AndroidSourceClient c, String url) async {
+    await c.removeRepository(url);
+    return 'Repositorio eliminado';
   }
 
   @override
@@ -336,11 +342,10 @@ class _ReposSheetState extends ConsumerState<_ReposSheet> {
                     : IconButton(
                         tooltip: 'Añadir',
                         icon: const Icon(Icons.add_rounded),
-                        onPressed: () =>
-                            _change((c) => c.addRepository(_ctrl.text)),
+                        onPressed: () => _change((c) => _add(c, _ctrl.text)),
                       ),
               ),
-              onSubmitted: (v) => _change((c) => c.addRepository(v)),
+              onSubmitted: (v) => _change((c) => _add(c, v)),
             ),
             if (_info != null)
               Padding(
@@ -358,7 +363,7 @@ class _ReposSheetState extends ConsumerState<_ReposSheet> {
                 title: Text(r, maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: IconButton(
                   icon: const Icon(Icons.delete_outline_rounded),
-                  onPressed: () => _change((c) => c.removeRepository(r)),
+                  onPressed: () => _change((c) => _remove(c, r)),
                 ),
               ),
             if (repos.isEmpty)
