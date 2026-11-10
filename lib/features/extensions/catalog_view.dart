@@ -51,7 +51,12 @@ class _CatalogViewState extends ConsumerState<CatalogView> {
   Future<void> _manageRepos() async {
     await showModalBottomSheet<void>(
       context: context,
+      useRootNavigator: true, // por encima del dock flotante
+      useSafeArea: true,
       isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
       backgroundColor: context.koma.surface,
       builder: (_) => const _ReposSheet(),
     );
@@ -267,13 +272,13 @@ class _ReposSheetState extends ConsumerState<_ReposSheet> {
       if (!mounted) return;
       final added = after.where((r) => !before.contains(r)).toList();
       setState(() {
-        _info = added.isEmpty
-            ? null
-            : 'Repositorio añadido: ${added.first}';
+        _info = added.isEmpty ? null : 'Repositorio añadido: ${added.first}';
       });
       _ctrl.clear();
     } on KomaError catch (e) {
-      if (mounted) setState(() => _error = e.message.isEmpty ? '$e' : e.message);
+      if (mounted) {
+        setState(() => _error = e.message.isEmpty ? '$e' : e.message);
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -286,77 +291,83 @@ class _ReposSheetState extends ConsumerState<_ReposSheet> {
     final t = Theme.of(context).textTheme;
     final c = context.koma;
     final repos = ref.watch(repositoriesProvider).asData?.value ?? const [];
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        22,
-        22,
-        22,
-        MediaQuery.viewInsetsOf(context).bottom + 22,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Repositorios', style: t.headlineSmall),
-          const SizedBox(height: 6),
-          Text(
-            'Solo HTTPS. Añade únicamente repositorios en los que confíes: '
-            'publican código que se ejecuta en Koma.',
-            style: t.bodySmall?.copyWith(color: c.muted),
-          ),
-          const SizedBox(height: 12),
-          for (final r in repos)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              title: Text(r, maxLines: 2, overflow: TextOverflow.ellipsis),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline_rounded),
-                onPressed: () => _change((c) => c.removeRepository(r)),
-              ),
+    return SafeArea(
+      top: false,
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(
+          22,
+          22,
+          22,
+          MediaQuery.viewInsetsOf(context).bottom + 22,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Repositorios', style: t.headlineSmall),
+            const SizedBox(height: 6),
+            Text(
+              'Solo HTTPS. Añade únicamente repositorios en los que confíes: '
+              'publican código que se ejecuta en Koma.',
+              style: t.bodySmall?.copyWith(color: c.muted),
             ),
-          if (repos.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('Sin repositorios', style: t.bodyMedium),
-            ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _ctrl,
-            keyboardType: TextInputType.url,
-            enabled: !_busy,
-            decoration: InputDecoration(
-              hintText: 'URL del repositorio o de su página',
-              helperText:
-                  'Acepta la carpeta del repositorio, su index.min.json, '
-                  'una página de GitHub o un enlace mihon://add-repo',
-              helperMaxLines: 3,
-              errorText: _error,
-              errorMaxLines: 5,
-              suffixIcon: _busy
-                  ? const Padding(
-                      padding: EdgeInsets.all(14),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2.5),
+            const SizedBox(height: 14),
+            TextField(
+              controller: _ctrl,
+              keyboardType: TextInputType.url,
+              enabled: !_busy,
+              decoration: InputDecoration(
+                hintText: 'URL del repositorio o de su página',
+                helperText:
+                    'Acepta la carpeta del repositorio, su index.min.json, '
+                    'una página de GitHub o un enlace mihon://add-repo',
+                helperMaxLines: 3,
+                errorText: _error,
+                errorMaxLines: 5,
+                suffixIcon: _busy
+                    ? const Padding(
+                        padding: EdgeInsets.all(14),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                      )
+                    : IconButton(
+                        tooltip: 'Añadir',
+                        icon: const Icon(Icons.add_rounded),
+                        onPressed: () =>
+                            _change((c) => c.addRepository(_ctrl.text)),
                       ),
-                    )
-                  : IconButton(
-                      tooltip: 'Añadir',
-                      icon: const Icon(Icons.add_rounded),
-                      onPressed: () =>
-                          _change((c) => c.addRepository(_ctrl.text)),
-                    ),
+              ),
+              onSubmitted: (v) => _change((c) => c.addRepository(v)),
             ),
-            onSubmitted: (v) => _change((c) => c.addRepository(v)),
-          ),
-          if (_info != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text(_info!, style: t.bodySmall?.copyWith(color: c.accent)),
-            ),
-        ],
+            if (_info != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Text(
+                  _info!,
+                  style: t.bodySmall?.copyWith(color: c.accent),
+                ),
+              ),
+            const SizedBox(height: 18),
+            for (final r in repos)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: Text(r, maxLines: 2, overflow: TextOverflow.ellipsis),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  onPressed: () => _change((c) => c.removeRepository(r)),
+                ),
+              ),
+            if (repos.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text('Sin repositorios', style: t.bodyMedium),
+              ),
+          ],
+        ),
       ),
     );
   }

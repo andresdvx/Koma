@@ -76,11 +76,9 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
       _error = null;
     });
     try {
-      final result = await ref.read(sourceClientProvider).searchManga(
-            sourceId: sourceId,
-            query: _query,
-            page: _page + 1,
-          );
+      final result = await ref
+          .read(sourceClientProvider)
+          .searchManga(sourceId: sourceId, query: _query, page: _page + 1);
       if (!mounted || gen != _generation) return;
       if (_page == 0 && result.items.isNotEmpty) rememberGoodSource(sourceId);
       setState(() {
@@ -102,6 +100,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
     HapticFeedback.selectionClick();
     final picked = await showModalBottomSheet<String>(
       context: context,
+      useRootNavigator: true, // por encima del dock flotante
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _SourceSheet(sources: list, selectedId: _sourceId),
@@ -123,9 +122,12 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
           if (list.isEmpty) return const _NoSources();
           if (_sourceId == null || !list.any((s) => s.id == _sourceId)) {
             final saved = last.asData?.value;
-            final first = list.any((s) => s.id == saved) ? saved! : list.first.id;
-            WidgetsBinding.instance
-                .addPostFrameCallback((_) => mounted ? _reset(first) : null);
+            final first = list.any((s) => s.id == saved)
+                ? saved!
+                : list.first.id;
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => mounted ? _reset(first) : null,
+            );
           }
           final current = list.firstWhere(
             (s) => s.id == _sourceId,
@@ -134,7 +136,8 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
           return CustomScrollView(
             controller: _scroll,
             physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics()),
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
             slivers: [
               SliverToBoxAdapter(child: _header(current, list)),
               ..._resultSlivers(),
@@ -157,11 +160,13 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
         content: const Text('Se borra el archivo importado de Koma.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancelar')),
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Eliminar')),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Eliminar'),
+          ),
         ],
       ),
     );
@@ -179,8 +184,11 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
     final client = ref.read(sourceClientProvider);
     final messenger = ScaffoldMessenger.of(context);
     if (client is! AndroidSourceClient) {
-      messenger.showSnackBar(const SnackBar(
-          content: Text('Importar archivos solo está disponible en Android')));
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Importar archivos solo está disponible en Android'),
+        ),
+      );
       return;
     }
     final picked = await FilePicker.pickFiles(
@@ -205,12 +213,16 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
       }
     }
     if (!mounted) return;
-    messenger.showSnackBar(SnackBar(
-      content: Text(ok > 0
-          ? '$ok archivo${ok == 1 ? '' : 's'} importado${ok == 1 ? '' : 's'}'
-              '${error != null ? ' · $error' : ''}'
-          : error ?? 'No se importó nada'),
-    ));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          ok > 0
+              ? '$ok archivo${ok == 1 ? '' : 's'} importado${ok == 1 ? '' : 's'}'
+                    '${error != null ? ' · $error' : ''}'
+              : error ?? 'No se importó nada',
+        ),
+      ),
+    );
     if (ok > 0) {
       ref.invalidate(sourcesProvider);
       final id = _sourceId;
@@ -240,45 +252,53 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
                   ),
                 ),
               ).animate().scale(
-                    duration: 700.ms,
-                    curve: Curves.elasticOut,
-                    begin: const Offset(0, 0),
-                  ),
+                duration: 700.ms,
+                curve: Curves.elasticOut,
+                begin: const Offset(0, 0),
+              ),
               const SizedBox(width: 10),
               Text('Koma', style: t.displayLarge),
             ],
           ).animate().fadeIn(duration: 500.ms).slideX(begin: -0.04),
           const SizedBox(height: 4),
-          Text('¿Qué leemos hoy?', style: t.bodyMedium?.copyWith(color: c.muted))
-              .animate()
-              .fadeIn(delay: 120.ms, duration: 500.ms),
+          Text(
+            '¿Qué leemos hoy?',
+            style: t.bodyMedium?.copyWith(color: c.muted),
+          ).animate().fadeIn(delay: 120.ms, duration: 500.ms),
           const SizedBox(height: 20),
           _SearchField(
-            controller: _controller,
-            onSubmit: (v) {
-              _query = v.trim();
-              if (_sourceId != null) _reset(_sourceId!);
-            },
-            onClear: () {
-              _controller.clear();
-              _query = '';
-              if (_sourceId != null) _reset(_sourceId!);
-            },
-          ).animate().fadeIn(delay: 180.ms, duration: 500.ms).slideY(begin: 0.15),
+                controller: _controller,
+                onSubmit: (v) {
+                  _query = v.trim();
+                  if (_sourceId != null) _reset(_sourceId!);
+                },
+                onClear: () {
+                  _controller.clear();
+                  _query = '';
+                  if (_sourceId != null) _reset(_sourceId!);
+                },
+              )
+              .animate()
+              .fadeIn(delay: 180.ms, duration: 500.ms)
+              .slideY(begin: 0.15),
           const SizedBox(height: 14),
           Row(
             children: [
               Flexible(
                 child: _SourcePill(
-                    source: current, onTap: () => _pickSource(list)),
+                  source: current,
+                  onTap: () => _pickSource(list),
+                ),
               ),
               const SizedBox(width: 10),
               Pressable(
                 onTap: _importLocal,
                 haptic: true,
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: c.surface,
                     borderRadius: BorderRadius.circular(22),
@@ -345,7 +365,9 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
             ratio: _ratioFor(_items[i].title),
             animateIn: firstTime,
             delay: Duration(milliseconds: (i % 8) * 55),
-            onLongPress: _sourceId == 'local' ? () => _deleteLocal(_items[i]) : null,
+            onLongPress: _sourceId == 'local'
+                ? () => _deleteLocal(_items[i])
+                : null,
           );
         },
       ),
@@ -361,11 +383,11 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
                   child: Center(child: _Dots()),
                 )
               : _error != null
-                  ? SizedBox(
-                      height: 220,
-                      child: ErrorPanel(error: _error!, onRetry: _loadMore),
-                    )
-                  : const SizedBox(height: 8),
+              ? SizedBox(
+                  height: 220,
+                  child: ErrorPanel(error: _error!, onRetry: _loadMore),
+                )
+              : const SizedBox(height: 8),
         ),
       ),
     ];
@@ -389,10 +411,8 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
         mainAxisSpacing: 14,
         crossAxisSpacing: 14,
         childCount: 6,
-        itemBuilder: (_, i) => AspectRatio(
-          aspectRatio: ratios[i],
-          child: const Skeleton(),
-        ),
+        itemBuilder: (_, i) =>
+            AspectRatio(aspectRatio: ratios[i], child: const Skeleton()),
       ),
     );
   }
@@ -519,8 +539,10 @@ class _SearchField extends StatelessWidget {
           hintText: 'Buscar manga…',
           hintStyle: t.bodyLarge?.copyWith(color: c.muted),
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 18,
+            vertical: 16,
+          ),
           prefixIcon: Icon(Icons.search_rounded, color: c.muted),
           suffixIcon: ValueListenableBuilder(
             valueListenable: controller,
@@ -567,14 +589,18 @@ class _SourcePill extends StatelessWidget {
               Container(
                 width: 8,
                 height: 8,
-                decoration:
-                    BoxDecoration(color: c.accent, shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: c.accent,
+                  shape: BoxShape.circle,
+                ),
               ),
               const SizedBox(width: 10),
               Flexible(
-                child: Text(source.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.labelLarge?.copyWith(color: c.paper)),
+                child: Text(
+                  source.name,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.labelLarge?.copyWith(color: c.paper),
+                ),
               ),
               const SizedBox(width: 8),
               Container(
@@ -617,10 +643,12 @@ class _SourceSheetState extends State<_SourceSheet> {
     final t = Theme.of(context).textTheme;
     final q = _filter.toLowerCase();
     final shown = widget.sources
-        .where((s) =>
-            q.isEmpty ||
-            s.name.toLowerCase().contains(q) ||
-            s.language.toLowerCase().contains(q))
+        .where(
+          (s) =>
+              q.isEmpty ||
+              s.name.toLowerCase().contains(q) ||
+              s.language.toLowerCase().contains(q),
+        )
         .toList();
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -690,7 +718,9 @@ class _SourceSheetState extends State<_SourceSheet> {
                       duration: const Duration(milliseconds: 250),
                       margin: const EdgeInsets.symmetric(vertical: 3),
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 14),
+                        horizontal: 14,
+                        vertical: 14,
+                      ),
                       decoration: BoxDecoration(
                         color: sel ? c.accentSoft : Colors.transparent,
                         borderRadius: BorderRadius.circular(18),
@@ -698,23 +728,28 @@ class _SourceSheetState extends State<_SourceSheet> {
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text(s.name,
-                                style: t.titleSmall,
-                                overflow: TextOverflow.ellipsis),
+                            child: Text(
+                              s.name,
+                              style: t.titleSmall,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           Text(s.language.toUpperCase(), style: t.labelMedium),
                           if (sel) ...[
                             const SizedBox(width: 10),
-                            Icon(Icons.check_circle_rounded,
-                                color: c.accent, size: 20),
+                            Icon(
+                              Icons.check_circle_rounded,
+                              color: c.accent,
+                              size: 20,
+                            ),
                           ],
                         ],
                       ),
                     ),
                   ).animate().fadeIn(
-                        delay: Duration(milliseconds: (i % 10) * 25),
-                        duration: 300.ms,
-                      );
+                    delay: Duration(milliseconds: (i % 10) * 25),
+                    duration: 300.ms,
+                  );
                 },
               ),
             ),
@@ -736,11 +771,14 @@ class _Dots extends StatelessWidget {
       children: [
         for (var i = 0; i < 3; i++)
           Container(
-            width: 9,
-            height: 9,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            decoration: BoxDecoration(color: c.accent, shape: BoxShape.circle),
-          )
+                width: 9,
+                height: 9,
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                decoration: BoxDecoration(
+                  color: c.accent,
+                  shape: BoxShape.circle,
+                ),
+              )
               .animate(onPlay: (ctrl) => ctrl.repeat(reverse: true))
               .scale(
                 delay: Duration(milliseconds: i * 140),
@@ -769,8 +807,11 @@ class _EmptyResults extends StatelessWidget {
           const SizedBox(height: 14),
           Text('Sin resultados', style: t.titleLarge),
           const SizedBox(height: 6),
-          Text('Prueba con otra búsqueda o cambia de fuente.',
-              style: t.bodySmall, textAlign: TextAlign.center),
+          Text(
+            'Prueba con otra búsqueda o cambia de fuente.',
+            style: t.bodySmall,
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     ).animate().fadeIn(duration: 400.ms);
@@ -793,14 +834,16 @@ class _NoSources extends StatelessWidget {
             Container(
               width: 84,
               height: 84,
-              decoration:
-                  BoxDecoration(color: c.accentSoft, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: c.accentSoft,
+                shape: BoxShape.circle,
+              ),
               child: Icon(Icons.extension_rounded, size: 38, color: c.accent),
             ).animate().scale(
-                  duration: 600.ms,
-                  curve: Curves.elasticOut,
-                  begin: const Offset(0.5, 0.5),
-                ),
+              duration: 600.ms,
+              curve: Curves.elasticOut,
+              begin: const Offset(0.5, 0.5),
+            ),
             const SizedBox(height: 22),
             Text('Aún no hay fuentes', style: t.headlineSmall),
             const SizedBox(height: 8),
