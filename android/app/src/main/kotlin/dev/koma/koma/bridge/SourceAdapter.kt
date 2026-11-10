@@ -79,6 +79,7 @@ class SourceAdapter(private val registry: ExtensionRegistry) {
     /** Descarga la imagen con el cliente y la lógica de la extensión (URL final, cabeceras, cookies). */
     suspend fun pageImage(sourceId: String, chapterId: String, index: Int): ByteArray {
         val s = registry.source(sourceId)
+        if (s is LocalSource) return s.readPage(chapterId, index)
         if (s !is HttpSource) {
             throw KomaBridgeException("ExtensionIncompatible", "La fuente no es HttpSource")
         }

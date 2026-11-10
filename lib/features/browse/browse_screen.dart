@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -7,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:koma_source_api/koma_source_api.dart';
 
 import '../../app/theme.dart';
+import '../../core/platform/android_source_client.dart';
 import '../../core/source_providers.dart';
 import '../../shared/widgets/async_view.dart';
 import '../../shared/widgets/cover.dart';
@@ -78,6 +82,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
             page: _page + 1,
           );
       if (!mounted || gen != _generation) return;
+      if (_page == 0 && result.items.isNotEmpty) rememberGoodSource(sourceId);
       setState(() {
         _page++;
         _items.addAll(result.items);
@@ -107,6 +112,8 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
   @override
   Widget build(BuildContext context) {
     final sources = ref.watch(sourcesProvider);
+    final last = ref.watch(lastSourceProvider);
+    if (last.isLoading) return const SizedBox.shrink();
     return SafeArea(
       bottom: false,
       child: AsyncView(
@@ -115,7 +122,8 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
         builder: (list) {
           if (list.isEmpty) return const _NoSources();
           if (_sourceId == null || !list.any((s) => s.id == _sourceId)) {
-            final first = list.first.id;
+            final saved = last.asData?.value;
+            final first = list.any((s) => s.id == saved) ? saved! : list.first.id;
             WidgetsBinding.instance
                 .addPostFrameCallback((_) => mounted ? _reset(first) : null);
           }
@@ -136,6 +144,78 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
         },
       ),
     );
+  }
+
+  Future<void> _deleteLocal(MangaSummary m) async {
+    final client = ref.read(sourceClientProvider);
+    if (client is! AndroidSourceClient) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('¿Eliminar "${m.title}"?'),
+        content: const Text('Se borra el archivo importado de Koma.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancelar')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await client.deleteLocal(m.id);
+      if (mounted) _reset('local');
+    } on KomaError catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  /// Importa archivos CBZ/ZIP como mangas de la fuente "Local".
+  Future<void> _importLocal() async {
+    final client = ref.read(sourceClientProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    if (client is! AndroidSourceClient) {
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Importar archivos solo está disponible en Android')));
+      return;
+    }
+    final picked = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['cbz', 'zip'],
+    );
+    if (picked.isEmpty) return;
+    var ok = 0;
+    String? error;
+    for (final f in picked) {
+      final tmp = File('${Directory.systemTemp.path}/${f.name}');
+      try {
+        final sink = tmp.openWrite();
+        await sink.addStream(f.readAsByteStream());
+        await sink.close();
+        await client.importLocal(tmp.path);
+        ok++;
+      } on KomaError catch (e) {
+        error = '$e';
+      } finally {
+        if (tmp.existsSync()) tmp.deleteSync();
+      }
+    }
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(ok > 0
+          ? '$ok archivo${ok == 1 ? '' : 's'} importado${ok == 1 ? '' : 's'}'
+              '${error != null ? ' · $error' : ''}'
+          : error ?? 'No se importó nada'),
+    ));
+    if (ok > 0) {
+      ref.invalidate(sourcesProvider);
+      final id = _sourceId;
+      if (id == 'local') _reset('local');
+    }
   }
 
   Widget _header(MangaSourceInfo current, List<MangaSourceInfo> list) {
@@ -186,9 +266,36 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
             },
           ).animate().fadeIn(delay: 180.ms, duration: 500.ms).slideY(begin: 0.15),
           const SizedBox(height: 14),
-          _SourcePill(source: current, onTap: () => _pickSource(list))
-              .animate()
-              .fadeIn(delay: 260.ms, duration: 500.ms),
+          Row(
+            children: [
+              Flexible(
+                child: _SourcePill(
+                    source: current, onTap: () => _pickSource(list)),
+              ),
+              const SizedBox(width: 10),
+              Pressable(
+                onTap: _importLocal,
+                haptic: true,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: c.surface,
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(color: c.line),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.folder_open_rounded, size: 18, color: c.paper),
+                      const SizedBox(width: 6),
+                      Text('CBZ', style: t.labelLarge),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ).animate().fadeIn(delay: 260.ms, duration: 500.ms),
           const SizedBox(height: 18),
         ],
       ),
@@ -238,6 +345,7 @@ class _BrowseScreenState extends ConsumerState<BrowseScreen> {
             ratio: _ratioFor(_items[i].title),
             animateIn: firstTime,
             delay: Duration(milliseconds: (i % 8) * 55),
+            onLongPress: _sourceId == 'local' ? () => _deleteLocal(_items[i]) : null,
           );
         },
       ),
@@ -296,17 +404,20 @@ class _MangaCard extends StatelessWidget {
     required this.ratio,
     required this.animateIn,
     required this.delay,
+    this.onLongPress,
   });
 
   final MangaSummary manga;
   final double ratio;
   final bool animateIn;
   final Duration delay;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final card = Pressable(
+      onLongPress: onLongPress,
       onTap: () => context.push(
         '/manga/${Uri.encodeComponent(manga.sourceId)}/${Uri.encodeComponent(manga.id)}',
         extra: manga,

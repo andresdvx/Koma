@@ -7,12 +7,14 @@ class Pressable extends StatefulWidget {
     super.key,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.scale = 0.96,
     this.haptic = false,
   });
 
   final Widget child;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final double scale;
   final bool haptic;
 
@@ -34,6 +36,13 @@ class _PressableState extends State<Pressable> {
       onTapDown: (_) => _set(true),
       onTapCancel: () => _set(false),
       onTapUp: (_) => _set(false),
+      onLongPress: widget.onLongPress == null
+          ? null
+          : () {
+              _set(false);
+              HapticFeedback.mediumImpact();
+              widget.onLongPress!();
+            },
       onTap: widget.onTap == null
           ? null
           : () {

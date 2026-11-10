@@ -3,7 +3,7 @@ package dev.koma.koma.bridge
 import eu.kanade.tachiyomi.source.Source
 
 /** Mantiene las extensiones cargadas y sus fuentes, indexadas por id (cadena). */
-class ExtensionRegistry(private val loader: ExtensionLoader) {
+class ExtensionRegistry(private val loader: ExtensionLoader, private val local: LocalSource) {
 
     private val infos = linkedMapOf<String, LoadedExtensionInfo>()
     private val sources = linkedMapOf<String, Pair<String, Source>>() // sourceId -> (extId, source)
@@ -12,6 +12,7 @@ class ExtensionRegistry(private val loader: ExtensionLoader) {
     fun refresh() {
         infos.clear()
         sources.clear()
+        sources[LocalSource.SOURCE_ID] = LocalSource.EXTENSION_ID to local
         loader.installed().forEach { infos[it.packageName] = it }
         infos.values.filter(loader::isTrusted).forEach { loadInto(it) }
     }

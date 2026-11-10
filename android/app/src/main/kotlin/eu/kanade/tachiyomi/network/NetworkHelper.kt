@@ -32,6 +32,7 @@ class NetworkHelper(private val context: Context) {
             .addInterceptor(UncaughtExceptionInterceptor())
             .addInterceptor(UserAgentInterceptor(::defaultUserAgentProvider))
             .addInterceptor(CloudflareInterceptor())
+            .addInterceptor(eu.kanade.tachiyomi.network.interceptor.FailureLogInterceptor())
             .build()
     }
 
