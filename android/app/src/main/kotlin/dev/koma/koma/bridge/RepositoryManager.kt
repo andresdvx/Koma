@@ -33,10 +33,38 @@ class RepositoryManager(private val app: Application, private val loader: Extens
         return prefs.getStringSet(KEY, emptySet())!!.sorted()
     }
 
+    /**
+     * Añade un repositorio a partir de lo que pegó el usuario: la carpeta del repositorio,
+     * la URL de su `index.min.json`, un enlace `mihon://add-repo?url=…` o la página web / repo
+     * de GitHub que lo describe. Cada candidato se valida descargando su índice antes de guardarlo.
+     */
     fun add(rawUrl: String): List<String> {
-        val base = normalize(rawUrl)
-        save(repositories() + base)
-        return repositories()
+        val candidates = candidatesFor(rawUrl)
+        val failures = mutableListOf<String>()
+        for (base in candidates) {
+            try {
+                validateIndex(base)
+            } catch (t: Throwable) {
+                failures += "$base (${t.message ?: t.javaClass.simpleName})"
+                continue
+            }
+            save(repositories() + base)
+            return repositories()
+        }
+        throw KomaBridgeException(
+            "ExtensionIncompatible",
+            "No encontré un repositorio de extensiones válido. Probé: ${failures.joinToString("; ")}",
+        )
+    }
+
+    /** Un repositorio válido publica `index.min.json`: una lista de extensiones con `pkg` y `apk`. */
+    private fun validateIndex(base: String) {
+        val index = fetchIndex(base)
+        val ok = index.isNotEmpty() && index.take(5).all {
+            val o = it as? JsonObject
+            o != null && "pkg" in o && "apk" in o && "code" in o
+        }
+        if (!ok) throw IOException("el índice está vacío o no tiene el formato esperado")
     }
 
     fun remove(base: String): List<String> {
@@ -47,16 +75,7 @@ class RepositoryManager(private val app: Application, private val loader: Extens
     private fun save(list: List<String>) =
         prefs.edit().putStringSet(KEY, list.toSet()).apply()
 
-    /** Acepta la URL del índice o la de su carpeta; devuelve la carpeta sin barra final. */
-    internal fun normalize(raw: String): String {
-        var s = raw.trim().trimEnd('/')
-        if (s.endsWith(".json")) s = s.substringBeforeLast('/')
-        val url = s.toHttpUrlOrNull()
-        if (url == null || url.scheme != "https") {
-            throw KomaBridgeException("ExtensionIncompatible", "La URL del repositorio debe ser https válida")
-        }
-        return s
-    }
+    // La lógica de resolución de URLs vive en el companion para poder probarla sin Android.
 
     /** Catálogo combinado de todos los repositorios, con estado respecto a lo instalado. */
     fun catalog(installedCodes: (String) -> Long?): List<Map<String, Any?>> {
@@ -136,12 +155,19 @@ class RepositoryManager(private val app: Application, private val loader: Extens
 
     private fun getText(url: String): String =
         client.newCall(Request.Builder().url(url).build()).execute().use { r ->
-            if (!r.isSuccessful) throw IOException("HTTP ${r.code} en $url")
+            requireHttps(r)
+            if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
             r.body.string()
         }
 
+    /** Una redirección no puede degradar la conexión a http. */
+    private fun requireHttps(r: okhttp3.Response) {
+        if (r.request.url.scheme != "https") throw IOException("redirección a una URL no https")
+    }
+
     private fun download(url: String, target: File) {
         client.newCall(Request.Builder().url(url).build()).execute().use { r ->
+            requireHttps(r)
             if (!r.isSuccessful) throw IOException("HTTP ${r.code}")
             if (r.body.contentLength() > MAX_APK_BYTES) {
                 throw KomaBridgeException("ExtensionIncompatible", "APK demasiado grande")
@@ -167,6 +193,57 @@ class RepositoryManager(private val app: Application, private val loader: Extens
     private fun JsonObject.str(k: String) = this[k]!!.jsonPrimitive.content
 
     companion object {
+        /** Ramas donde las extensiones del ecosistema Mihon publican el índice, por orden de preferencia. */
+        private val INDEX_BRANCHES = listOf("repo", "main")
+
+        /**
+         * Devuelve, por orden de preferencia, las carpetas que podrían ser el repositorio.
+         * No hace red: [add] valida cada una. Solo HTTPS.
+         */
+        internal fun candidatesFor(raw: String): List<String> {
+            var s = raw.trim()
+            // Enlaces de adición: mihon://add-repo?url=https%3A%2F%2F…
+            Regex("^[a-z][a-z0-9+.-]*://add-repo\\?(.*)$", RegexOption.IGNORE_CASE).find(s)?.let { m ->
+                val param = m.groupValues[1].split('&')
+                    .map { it.split('=', limit = 2) }
+                    .firstOrNull { it.size == 2 && it[0] == "url" }
+                    ?.get(1)
+                    ?: throw KomaBridgeException("ExtensionIncompatible", "El enlace add-repo no trae url")
+                s = java.net.URLDecoder.decode(param, "UTF-8").trim()
+            }
+
+            val base = normalize(s)
+            val url = base.toHttpUrlOrNull()
+                ?: throw KomaBridgeException("ExtensionIncompatible", "La URL del repositorio debe ser https válida")
+            val segments = url.pathSegments.filter { it.isNotEmpty() }
+
+            // Páginas que describen un repositorio: <dueño>.github.io/<repo> o github.com/<dueño>/<repo>.
+            val ownerRepo: Pair<String, String>? = when {
+                url.host.endsWith(".github.io") && segments.isNotEmpty() ->
+                    url.host.removeSuffix(".github.io") to segments[0]
+                url.host == "github.com" && segments.size >= 2 -> segments[0] to segments[1]
+                else -> null
+            }
+
+            val out = linkedSetOf(base)
+            if (ownerRepo != null) {
+                val (owner, repo) = ownerRepo
+                INDEX_BRANCHES.forEach { out += "https://raw.githubusercontent.com/$owner/$repo/$it" }
+            }
+            return out.toList()
+        }
+
+        /** Acepta la URL del índice o la de su carpeta; devuelve la carpeta sin barra final. */
+        internal fun normalize(raw: String): String {
+            var s = raw.trim().trimEnd('/')
+            if (s.endsWith(".json")) s = s.substringBeforeLast('/')
+            val url = s.toHttpUrlOrNull()
+            if (url == null || url.scheme != "https") {
+                throw KomaBridgeException("ExtensionIncompatible", "La URL del repositorio debe ser https válida")
+            }
+            return s
+        }
+
         private const val KEY = "repos"
         const val DEFAULT_REPO = "https://raw.githubusercontent.com/keiyoushi/extensions/repo"
         private const val MAX_APK_BYTES = 100L * 1024 * 1024

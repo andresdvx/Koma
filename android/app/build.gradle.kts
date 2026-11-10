@@ -63,6 +63,8 @@ dependencies {
     implementation("io.reactivex:rxjava:1.3.8")
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("app.cash.quickjs:quickjs-android:0.9.2")
+
+    testImplementation("junit:junit:4.13.2")
 }
 
 flutter {

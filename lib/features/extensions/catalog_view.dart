@@ -242,6 +242,8 @@ class _ReposSheet extends ConsumerStatefulWidget {
 class _ReposSheetState extends ConsumerState<_ReposSheet> {
   final _ctrl = TextEditingController();
   String? _error;
+  String? _info;
+  bool _busy = false;
 
   @override
   void dispose() {
@@ -253,15 +255,30 @@ class _ReposSheetState extends ConsumerState<_ReposSheet> {
     Future<List<String>> Function(AndroidSourceClient c) action,
   ) async {
     final client = ref.read(sourceClientProvider);
-    if (client is! AndroidSourceClient) return;
+    if (client is! AndroidSourceClient || _busy) return;
+    final before = ref.read(repositoriesProvider).asData?.value ?? const [];
+    setState(() {
+      _busy = true;
+      _error = null;
+      _info = null;
+    });
     try {
-      await action(client);
-      setState(() => _error = null);
+      final after = await action(client);
+      if (!mounted) return;
+      final added = after.where((r) => !before.contains(r)).toList();
+      setState(() {
+        _info = added.isEmpty
+            ? null
+            : 'Repositorio añadido: ${added.first}';
+      });
       _ctrl.clear();
     } on KomaError catch (e) {
-      setState(() => _error = '$e');
+      if (mounted) setState(() => _error = e.message.isEmpty ? '$e' : e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
     ref.invalidate(repositoriesProvider);
+    ref.invalidate(catalogProvider);
   }
 
   @override
@@ -307,16 +324,38 @@ class _ReposSheetState extends ConsumerState<_ReposSheet> {
           TextField(
             controller: _ctrl,
             keyboardType: TextInputType.url,
+            enabled: !_busy,
             decoration: InputDecoration(
-              hintText: 'https://…/index.min.json',
+              hintText: 'URL del repositorio o de su página',
+              helperText:
+                  'Acepta la carpeta del repositorio, su index.min.json, '
+                  'una página de GitHub o un enlace mihon://add-repo',
+              helperMaxLines: 3,
               errorText: _error,
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.add_rounded),
-                onPressed: () => _change((c) => c.addRepository(_ctrl.text)),
-              ),
+              errorMaxLines: 5,
+              suffixIcon: _busy
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2.5),
+                      ),
+                    )
+                  : IconButton(
+                      tooltip: 'Añadir',
+                      icon: const Icon(Icons.add_rounded),
+                      onPressed: () =>
+                          _change((c) => c.addRepository(_ctrl.text)),
+                    ),
             ),
             onSubmitted: (v) => _change((c) => c.addRepository(v)),
           ),
+          if (_info != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Text(_info!, style: t.bodySmall?.copyWith(color: c.accent)),
+            ),
         ],
       ),
     );
